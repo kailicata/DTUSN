@@ -20,14 +20,11 @@ class Cell:
         for sec in self.all:
             for i in range(sec.n3d()):
                 sec.pt3dchange(i,
-                               x - self.x +sec.x3d(
-i),
-                               y - self.y +sec.y3d(
-i),
-                               z - self.z +sec.z3d(
-i),
+                               x - self.x +sec.x3d(i),
+                               y - self.y +sec.y3d(i),
+                               z - self.z +sec.z3d(i),
                                 sec.diam3d(i))
-        self.x, self.y, self.xz = x, y, z
+        self.x, self.y, self.z = x, y, z
     def _rotate_z(self,theta):
         for sec in self.all:
             for i in range(sec.n3d()):

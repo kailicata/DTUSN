@@ -65,7 +65,7 @@ class BallAndStick(Cell):
     def _setup_biophysics(self):
         for sec in self.all:
             self.Ra = 100 #axial resistance in Ohm*cm
-            sec.cm = 1 #membrane capactiance in micro farads/cm^s
+            sec.cm = 1 #membrane capactiance in micro farads/cm^2
         self.soma.insert("hh")
         for seg in self.soma:
             seg.hh.gnabar = 0.12 #sodium conductance
