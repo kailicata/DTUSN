@@ -23,7 +23,7 @@ model_parameters = {
 
 "K_conductance" :  0.036, #potassium conductance (siemens)
 
-"leak_conductance" : 0.0003, #leak conductance (siemens)
+"leak_conductance": 0.0003, #leak conductance (siemens)
 
 "rev_potential" : -54.3, #reversal potential in (mV)
 
