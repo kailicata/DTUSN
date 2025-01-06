@@ -20,6 +20,9 @@ from kwave.utils.signals import reorder_binary_sensor_data
 from neuron import h,gui
 from neuron.units import ms, mV 
 
+
+from model_parameters import model_parameters as mp
+
 h.load_file("stdrun.hoc")
 
 #ultrasound simulation
@@ -28,10 +31,10 @@ def ultrasound_simulation():
     karray = kWaveArray()
 
     #define arc properties
-    radius = 100e-7 #[m]
-    diameter = 8e-7 #[m]
-    ring_radius = 50e-6 #[m]
-    num_elemenst = 20
+    radius = mp["arc_radius"] #[m]
+    diameter = mp["arc_diameter"]  #[m]
+    ring_radius = mp["ring_radius"]  #[m]
+    num_elemenst = mp["num_ultrasound_detectors"] 
 
     print("started ")
     #oreint all elements twoards center of grid
@@ -43,12 +46,12 @@ def ultrasound_simulation():
         karray.add_arc_element(element_pos[:, idx], radius, diameter, focus_pos)
 
     #grid properties
-    N = Vector([256, 256])
-    d = Vector([0.5e-6, 0.5e-6])
+    N = Vector([mp["grid_x"], mp["grid_y"]])
+    d = Vector([mp["displacement_x"], mp["displacement_y"]])
     kgrid = kWaveGrid(N,d)
 
     #medium properties
-    medium = kWaveMedium(sound_speed=1500)
+    medium = kWaveMedium(mp["sound_speed"])
 
     #time array
     kgrid.makeTime(medium.sound_speed)
@@ -221,25 +224,25 @@ class BallAndStick(Cell):
         self.soma = h.Section(name="soma", cell=self)
         self.dend = h.Section(name="dend", cell=self)
         self.dend.connect(self.soma)
-        self.soma.L = self.soma.diam = 12.6157
-        self.dend.L = 200
-        self.dend.diam = 1
+        self.soma.L = self.soma.diam = mp["soma_length"]
+        self.dend.L = mp["dend_length"]
+        self.dend.diam = mp["dend_diameter"]
 
     def _setup_biophysics(self):
         for sec in self.all:
-            self.Ra = 100 #axial resistance in Ohm*cm
-            sec.cm = 1 #membrane capactiance in micro farads/cm^s
+            self.Ra = mp["axial_res"] #axial resistance in Ohm*cm
+            sec.cm = mp["membrane_cap"] #membrane capactiance in micro farads/cm^s
         self.soma.insert("hh")
         for seg in self.soma:
-            seg.hh.gnabar = 0.12 #sodium conductance
-            seg.hh.gkbar = 0.036 #potassium conductance 
-            seg.hh.gl = 0.0003 #leak conductance
-            seg.hh.el = -54.3 #reversal potential in mV
+            seg.hh.gnabar = mp["Na_conductance"] #sodium conductance
+            seg.hh.gkbar = mp["K_conductance"]#potassium conductance 
+            seg.hh.gl = mp["leak_conductance"] #leak conductance
+            seg.hh.el = mp["rev_potential"] #reversal potential in mV
         #passive current in the dendrite 
         self.dend.insert("pas")
         for seg in self.dend:
-            seg.pas.g = 0.001 #passive conductance
-            seg.pas.e = -65 #leak reversal potenatial mV
+            seg.pas.g = mp["passive_conductance"] #passive conductance
+            seg.pas.e = mp["leak_rev_potential"] #leak reversal potenatial mV
 
         self.syn = h.ExpSyn(self.dend(0.5))
         self.syn.tau = 2 * ms 
@@ -248,7 +251,7 @@ class Ring:
     an excitory synapse onto cell n + 1 and the last, Nth cell in the network
     projects to the first cell"""
     def __init__(
-            self, N=5, stim_w=0.04, stim_t=9, stim_delay=1, syn_w=0.01,syn_delay=5,r=50
+            self, N= mp["number_neurons" ], stim_w=mp["stimulus_weight"], stim_t=mp["stimulus_time"], stim_delay=mp["stimulus_delay"], syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"]
     ):
         """
         param N: numner of cells
