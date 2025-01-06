@@ -1,2 +1,3 @@
 .DS_Store
 DTE
+__pycache__/
