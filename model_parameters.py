@@ -59,7 +59,7 @@ model_parameters = {
 
 "ring_radius" : 50e-6, #radius of ring (meters)
 
-"num_ultrasound_detectors" : 20, #number of detectors
+"num_ultrasound_detectors" : 3, #number of detectors
 
 #grid properties
 "grid_x" : 256, #width of the grid
