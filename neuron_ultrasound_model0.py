@@ -40,7 +40,25 @@ def ultrasound_simulation():
     #oreint all elements twoards center of grid
     focus_pos = Vector([0,0]) #[m]
 
-    element_pos = make_cart_circle(ring_radius, num_elemenst, focus_pos)
+    element_pos = make_cart_circle(ring_radius, num_elemenst, focus_pos) 
+
+   # element_pos = Vector(Vector([0,0]))
+
+    #KL** shift one sensor to center of stiumulation grid
+    #KL** used 2 sensors because only array works. positioned at center of nuerons and 0,0 
+    #p = Vector([12**-7,0])
+    #t = element_pos[:,0]
+    element_pos[:,0] = Vector([12**-7,0])
+    element_pos[:,1] = Vector([10**-7,0])
+
+    for i in range(num_elemenst):
+        element_pos[:,i] = Vector([10**-7 + i*10**-7 ,0])
+
+
+
+    #element_pos[:,1] = Vector([50*1**-6,30*1**-6])
+
+
 
     for idx in range(num_elemenst):
         karray.add_arc_element(element_pos[:, idx], radius, diameter, focus_pos)
@@ -134,7 +152,7 @@ def ultrasound_simulation():
     ax2 = fig.add_axes([0.95,0.1,0.03,0.8])
     mpl.colorbar.ColorbarBase(ax2, cmap=cmap, norm=norm, spacing="proportional", ticks=bounds, boundaries=bounds, format="%1i")
 
-    ax.set_title("Simualtion Layout")
+    ax.set_title("Simualtion of the Neural Ultrasonic Interaction (DTUSN)")
     ax.set_ylabel("Simulation Components[-]", size=12)
 
     #calculate the middle points for each segment of the colorbar
@@ -205,6 +223,8 @@ class Cell:
                     z - self.z + sec.z3d(i),
                     sec.diam3d(i),
                 )
+                #print( (i, x, y, z, sec.x3d(i), sec.y3d(i), sec.z3d(i)))
+                print( (sec.x3d(i), sec.y3d(i)))
         self.x, self.y, self.z = x, y, z
     
     def _rotate_z(self, theta):
@@ -277,9 +297,10 @@ class Ring:
     def _create_cells(self, N, r):
         self.cells = []
         for i in range(N):
+            offset_for_grid = (131.308, 227.432)
             theta = i * 2 *h.PI /N 
             self.cells.append(
-                BallAndStick(i, h.cos(theta) * r, h.sin(theta) * r , 0, theta)
+                BallAndStick(i, offset_for_grid[0] + h.cos(theta) * r, offset_for_grid[1] + h.sin(theta) * r , 0, theta)
             )
 
     def _connect_cells(self):
@@ -290,10 +311,15 @@ class Ring:
             source._ncs.append(nc)
 
 
+
+
+
 if __name__ == "__main__":
     ultrasound_simulation()
 
-ring = Ring(N=5)
+ring = Ring(N=6)
+
+
 
 shape_window = h.PlotShape(True)
 shape_window.show(0)
@@ -301,7 +327,6 @@ shape_window.show(0)
 t = h.Vector().record(h._ref_t)
 h.finitialize(-65 *mV)
 h.continuerun(100)
-
 
 
 
@@ -318,9 +343,10 @@ plt.show()
 
 plt.figure()
 for syn_w, color in [(0.01, "black"), (0.005, "red")]:
-    ring = Ring(N=5, syn_w=syn_w)
+    ring = Ring(N=6, syn_w=syn_w)
     h.finitialize(-65* mV)
     h.continuerun(100 * ms)
     for i, cell in enumerate(ring.cells):
         plt.vlines(list(cell.spike_times), i +0.5, i +1.5, color = color)
 plt.show()
+
