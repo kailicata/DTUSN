@@ -23,7 +23,41 @@ from neuron.units import ms, mV
 
 from model_parameters import model_parameters as mp
 
+import numpy as np
+
 h.load_file("stdrun.hoc")
+
+def neuron_plot(ring):
+
+    # Create an empty numpy array
+    xs = np.array([])
+    ys = np.array([])
+    zs = np.array([])
+
+
+    for cell in ring.cells:
+        for sec in cell.all:
+            for i in range(sec.n3d()):
+                print(sec.x3d(i),sec.y3d(i),sec.z3d(i),)
+                xs = np.append(xs, sec.x3d(i))
+                ys = np.append(ys, sec.y3d(i))
+                zs = np.append(zs, sec.z3d(i))
+
+
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(projection = "3d")
+
+    n = len(xs)
+
+    ax.scatter(xs, ys, zs, marker='o')
+
+    ax.set_xlabel('neuron cell len (micrometers)')
+    ax.set_ylabel('neuron cell len (micrometers)')
+    ax.set_zlabel('neuron cell len (micrometers)')
+
+    plt.show()
+
 
 #ultrasound simulation
 def ultrasound_simulation():
@@ -51,8 +85,10 @@ def ultrasound_simulation():
     element_pos[:,0] = Vector([12**-7,0])
     element_pos[:,1] = Vector([10**-7,0])
 
+    ultrasound_offset = [50*10**-6 , 50*10**-6]
+
     for i in range(num_elemenst):
-        element_pos[:,i] = Vector([10**-7 + i*10**-7 ,0])
+        element_pos[:,i] = Vector([ultrasound_offset[0] + 10**-7 + i*10**-7 ,ultrasound_offset[1] +0])
 
 
 
@@ -72,6 +108,7 @@ def ultrasound_simulation():
     medium = kWaveMedium(mp["sound_speed"])
 
     #time array
+    #make time is from the medium sound speed and is in micro seconds
     kgrid.makeTime(medium.sound_speed)
 
     source = kSource()
@@ -92,14 +129,18 @@ def ultrasound_simulation():
 
     #reorder the sensor data returned by k-wave to match the order of the elemnsts in the array
     _, _, reorder_index = cart2grid(kgrid, element_pos)
-    sensor_data_point = reorder_binary_sensor_data(output["p"].T, reorder_index=reorder_index)
+    #sensor_data_point = reorder_binary_sensor_data(output["p"].T, reorder_index=reorder_index)
 
     sensor.mask = karray.get_array_binary_mask(kgrid)
 
     output = kspaceFirstOrder2D(kgrid, source, sensor, medium, simulation_options, execution_options)
+    #shape of sensor data is (140,1207) 
+    #140 comes from sensor surface area points  
+    #each surface area sensor point has 1207 pressure points 
     sensor_data = output["p"].T
     combined_sensor_data = karray.combine_sensor_data(kgrid, sensor_data)
-
+    #KL**there are 3 sensors but 140 sesnor surface area points 
+    #KL**for each sesnor they take into consideation each point of the surface areas 
 
 
     #visulaitzation
@@ -149,14 +190,14 @@ def ultrasound_simulation():
     bounds = np.linspace(0, len(labels), len(labels)+1)
     norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
 
-    ax2 = fig.add_axes([0.95,0.1,0.03,0.8])
+    ax2 = fig.add_axes([-100,-50,50,100])
     mpl.colorbar.ColorbarBase(ax2, cmap=cmap, norm=norm, spacing="proportional", ticks=bounds, boundaries=bounds, format="%1i")
 
     ax.set_title("Simualtion of the Neural Ultrasonic Interaction (DTUSN)")
     ax.set_ylabel("Simulation Components[-]", size=12)
 
     #calculate the middle points for each segment of the colorbar
-    mid_points = [(bounds[i] + bounds[i+1])/2 for i in range(len(bounds)-1)]
+    mid_points = [(bounds[i] + 0*bounds[i+1])/2 for i in range(len(bounds)-1)]
 
     #set new tick positions adn labels
     ax2.set_yticks(mid_points)
@@ -297,10 +338,10 @@ class Ring:
     def _create_cells(self, N, r):
         self.cells = []
         for i in range(N):
-            offset_for_grid = (131.308, 227.432)
+            #offset_for_grid = (131.308, 227.432)
             theta = i * 2 *h.PI /N 
             self.cells.append(
-                BallAndStick(i, offset_for_grid[0] + h.cos(theta) * r, offset_for_grid[1] + h.sin(theta) * r , 0, theta)
+                BallAndStick(i,  h.cos(theta) * r,  h.sin(theta) * r , 0, theta)
             )
 
     def _connect_cells(self):
@@ -318,7 +359,7 @@ if __name__ == "__main__":
     ultrasound_simulation()
 
 ring = Ring(N=6)
-
+neuron_plot(ring)
 
 
 shape_window = h.PlotShape(True)
@@ -329,7 +370,7 @@ h.finitialize(-65 *mV)
 h.continuerun(100)
 
 
-
+"""
 
 
 plt.plot(t, ring.cells[0].soma_v)
@@ -349,4 +390,9 @@ for syn_w, color in [(0.01, "black"), (0.005, "red")]:
     for i, cell in enumerate(ring.cells):
         plt.vlines(list(cell.spike_times), i +0.5, i +1.5, color = color)
 plt.show()
+
+
+"""
+
+
 
