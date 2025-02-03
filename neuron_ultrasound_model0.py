@@ -16,6 +16,7 @@ from kwave.utils.kwave_array import kWaveArray
 from kwave.utils.colormap import get_color_map
 from kwave.utils.mapgen import make_cart_circle, make_disc
 from kwave.utils.signals import reorder_binary_sensor_data
+from pressure_physics_DTUSN import make_pressure
 #loading neuron libraries 
 from neuron import h,gui
 from neuron.units import ms, mV 
@@ -27,37 +28,89 @@ import numpy as np
 
 h.load_file("stdrun.hoc")
 
-def neuron_plot(ring):
-
+#neuron and ultrasound simulation plot 
+def neuron_plot(ring,source_points,sensor_data,sensor_location, p):
+    #for neuron points 
     # Create an empty numpy array
-    xs = np.array([])
-    ys = np.array([])
-    zs = np.array([])
+    xn = np.array([])
+    yn = np.array([])
+    zn = np.array([])
 
-
+    #for neuron points 
     for cell in ring.cells:
         for sec in cell.all:
             for i in range(sec.n3d()):
                 print(sec.x3d(i),sec.y3d(i),sec.z3d(i),)
-                xs = np.append(xs, sec.x3d(i))
-                ys = np.append(ys, sec.y3d(i))
-                zs = np.append(zs, sec.z3d(i))
+                xn = np.append(xn, sec.x3d(i))
+                yn = np.append(yn, sec.y3d(i))
+                zn = np.append(zn, sec.z3d(i))
+
+    
+    #for source points
+
+    #the xy coordiantaes are on the rows and points are on the coloums 
+
+    #   p0|p1|p2|p3|
+    #  +------------+
+    # x|  |  |  |  |
+    #  +------------+
+    # y|  |  |  |  | 
+    #  +------------+
+
+    xs = np.array([])
+    ys = np.array([])
+    zs = np.array([])
+
+    # transducer points 
+    rows, cols = np.where(source_points)
+    xs = cols
+    ys = rows
+    zs = np.zeros(len(rows))
+    print("rows are " + str(rows))
+    print("colums are " + str(cols))
+
+
+   
+    xd = np.array([])
+    yd = np.array([])
+    zd = np.array([])
+
+
+    # sensor location 
+    yd, xd = np.where(sensor_location)
+    zd = np.zeros(len(xd))
+    print("The rows are " + str(yd))
+    print("The rows are " + str(xd))
+
+
+
 
 
     
     fig = plt.figure()
     ax = fig.add_subplot(projection = "3d")
 
-    n = len(xs)
+    n = len(xn)
 
-    ax.scatter(xs, ys, zs, marker='o')
+    pressure_intensity = sensor_data[0][0]
+    print("pressure intensity" + str(pressure_intensity)) #Pa (N/m^2)
+    #ex: -1.6792447e-07 Pa
+
+
+    pdx = np.array(p[0])
+    pdy = np.array(p[1])
+    pdz = np.array(p[2])
+
+    ax.scatter(xn, yn, zn, marker='o', color=(0,1,0))#green represents neuron
+    ax.scatter(xs, ys, zs, marker='o', color=(1,0,0))#red represntes generates ultrasound 
+    ax.scatter(xd, yd, zd, marker='o', color=(0,0,1))#blue represnts sensor location
+    ax.scatter(pdx, pdy, pdz, marker='o', color=(0,0,0))#black represnts pressure points
 
     ax.set_xlabel('neuron cell len (micrometers)')
     ax.set_ylabel('neuron cell len (micrometers)')
     ax.set_zlabel('neuron cell len (micrometers)')
 
     plt.show()
-
 
 #ultrasound simulation
 def ultrasound_simulation():
@@ -114,8 +167,10 @@ def ultrasound_simulation():
     source = kSource()
     x_offset = 20
     #make a small disc in the top left of the domain
-    source.p0 = make_disc(N, Vector([N.x/4+ x_offset, N.y/4]),4)
-    source.p0[99:119, 59:199]=1
+    #KL** source.p0 is where the inital pressure points are defined (Pa)
+    source.p0 = make_pressure(N, Vector([N.x/4+ x_offset, N.y/4]),4)
+    source_points = source.p0
+    #source.p0[99:119, 59:199]=1
     logical_p0 = source.p0.astype(bool)
     sensor = kSensor()
     sensor.mask = element_pos
@@ -132,6 +187,7 @@ def ultrasound_simulation():
     #sensor_data_point = reorder_binary_sensor_data(output["p"].T, reorder_index=reorder_index)
 
     sensor.mask = karray.get_array_binary_mask(kgrid)
+    sensor_location = sensor.mask 
 
     output = kspaceFirstOrder2D(kgrid, source, sensor, medium, simulation_options, execution_options)
     #shape of sensor data is (140,1207) 
@@ -226,10 +282,12 @@ def ultrasound_simulation():
     #plt.plot(kgrid.t_array.squeeze() * 1e6, sensor_data_point[0, :], label="Cartesian point detectors")
     plt.plot(kgrid.t_array.squeeze() *1e6, combined_sensor_data[0, :], label="Arc detecors")
     plt.xlabel(r"Time [$\mu$s]")
-    plt.ylabel("pressure [pa]")
+    plt.ylabel("pressure [pa]") # (N/m^2) 
     plt.legend()
 
     plt.show()
+
+    return source_points , sensor_data, sensor_location 
 
 #neuron simulation
 class Cell:
@@ -334,6 +392,7 @@ class Ring:
         self._nc = h.NetCon(self._netstim, self.cells[0].syn)
         self._nc.delay = stim_delay
         self._nc.weight[0] = stim_w
+        self.set_pressure_point = []
 
     def _create_cells(self, N, r):
         self.cells = []
@@ -350,49 +409,89 @@ class Ring:
             nc.weight[0] = self._syn_w
             nc.delay = self._syn_delay
             source._ncs.append(nc)
+    
+    def set_pressure_point(self,pressure_intensity):
+        self.set_pressure_point = pressure_intensity
+
+
+
+def extract_first_dendrite_points(cell):
+    dendrite = cell.all[1]
+    x_coordinate = []
+    y_coordinate = []
+    z_coordinate = []
+    sec = dendrite
+    for i in range(sec.n3d()):
+        x = sec.x3d(i)
+        x_coordinate.append(x)
+        y = sec.y3d(i)
+        y_coordinate.append(y)
+        z = sec.z3d(i)
+        z_coordinate.append(z)
+        print(" ")
+        print("neuron dendrite x " + str(i) + " coordinate: " + str(x))
+        print(" ")
+        print("neuron dendrite y " + str(i) + " coordinate: " + str(y))
+        print(" ")
+        print("neuron dendrite z " + str(i) + " coordinate: " + str(z))
+        print(" ")
+    i = sec.n3d()//2 
+    x, y, z = sec.x3d(i),sec.y3d(i),sec.z3d(i)
+    print(x,y,z)
+    return [x, y, z]
+
+
+
+            
+
+
+            
+
 
 
 
 
 
 if __name__ == "__main__":
-    ultrasound_simulation()
+    source_points,sensor_data,sensor_location = ultrasound_simulation()
+    ring = Ring(N=6)
+    p = extract_first_dendrite_points(ring.cells[0])
 
-ring = Ring(N=6)
-neuron_plot(ring)
+    neuron_plot(ring,source_points,sensor_data,sensor_location, p)
 
+    shape_window = h.PlotShape(True)
+    shape_window.show(0)
 
-shape_window = h.PlotShape(True)
-shape_window.show(0)
-
-t = h.Vector().record(h._ref_t)
-h.finitialize(-65 *mV)
-h.continuerun(100)
-
-
-"""
+    t = h.Vector().record(h._ref_t)
+    h.finitialize(-65 *mV)
+    h.continuerun(100 *ms) 
 
 
-plt.plot(t, ring.cells[0].soma_v)
-plt.show()
-
-plt.figure()
-for i, cell in enumerate(ring.cells):
-    plt.vlines(list(cell.spike_times), i +0.5, i +1.5)
-plt.show()
 
 
-plt.figure()
-for syn_w, color in [(0.01, "black"), (0.005, "red")]:
-    ring = Ring(N=6, syn_w=syn_w)
-    h.finitialize(-65* mV)
-    h.continuerun(100 * ms)
+    """
+
+
+    plt.plot(t, ring.cells[0].soma_v)
+    plt.show()
+
+    plt.figure()
     for i, cell in enumerate(ring.cells):
-        plt.vlines(list(cell.spike_times), i +0.5, i +1.5, color = color)
-plt.show()
+        plt.vlines(list(cell.spike_times), i +0.5, i +1.5)
+    plt.show()
 
 
-"""
+    plt.figure()
+    for syn_w, color in [(0.01, "black"), (0.005, "red")]:
+        ring = Ring(N=6, syn_w=syn_w)
+        h.finitialize(-65* mV)
+        h.continuerun(100 * ms)
+        for i, cell in enumerate(ring.cells):
+            plt.vlines(list(cell.spike_times), i +0.5, i +1.5, color = color)
+    plt.show()
+
+
+    """
 
 
 
