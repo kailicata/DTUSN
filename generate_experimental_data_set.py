@@ -2,32 +2,42 @@ import os
 import random
 import numpy as np
 from pathlib import Path
+from neuron_ultrasound_model0 import classify_action_potential
+from model_parameters import model_parameters as mp 
+
+
+
 
 num_pressure_points = 1207
 
-def generate_sample(is_action_potential=True, num_pressure_points=num_pressure_points):
+
+
+def generate_sample(num_pressure_points=num_pressure_points):
     # Base values
-    soma_length = 12.6157 * random.uniform(0.9, 1.1)
-    soma_diameter = 12.6157 * random.uniform(0.9, 1.1)
-    dendrite_length = 200 * random.uniform(0.95, 1.05)
-    dendrite_diameter = 1 * random.uniform(0.9, 1.1)
+    p = mp.copy()
+    p["soma_length"] = 12.6157 * random.uniform(0.9, 1.1)
+    p["soma_diameter"] = 12.6157 * random.uniform(0.9, 1.1)
+    p["dend_length"] = 200 * random.uniform(0.95, 1.05)
+    p["dend_diameter"] = 1 * random.uniform(0.9, 1.1)
     
+    p["sodium_conductance"] = 0.12 * random.uniform(0.95, 1.1)
+    p["potassium_conductance"] = 0.036 * random.uniform(0.95, 1.1)
     # Biophysics parameters
-    axial_resistance = 100 * random.uniform(0.95, 1.05)
-    membrane_capacitance = 1 * random.uniform(0.95, 1.05)
+    #axial_resistance = 100 * random.uniform(0.95, 1.05)
+    p["membrane_capacitance"] = 1 * random.uniform(0.95, 1.05)
     
     # Conductance variations based on class
+    is_action_potential = classify_action_potential(p)
     if is_action_potential:
-        sodium_conductance = 0.12 * random.uniform(0.95, 1.05)
-        potassium_conductance = 0.036 * random.uniform(0.95, 1.05)
+        p["axial_resistance"] = 100 * random.uniform(1.5, 1.7)
+
     else:
-        sodium_conductance = 0.12 * random.uniform(0.3, 0.5)  # Reduced for no action potential
-        potassium_conductance = 0.036 * random.uniform(0.3, 0.5)
+        p["axial_resistance"] = 100 * random.uniform(0.3,0.5)
     
-    leak_conductance = 0.003 * random.uniform(0.95, 1.05)
-    reversal_potential = -54.3 * random.uniform(0.98, 1.02)
-    passive_conductance = 0.001 * random.uniform(0.95, 1.05)
-    leak_reversal_potential = -65 * random.uniform(0.98, 1.02)
+    p["leak_conductance"] = 0.003 * random.uniform(0.95, 1.05)
+    p["reversal_potential"] = -54.3 * random.uniform(0.98, 1.02)
+    p["passive_conductance"] = 0.001 * random.uniform(0.95, 1.05)
+    p["leak_reversal_potential"] = -65 * random.uniform(0.98, 1.02)
     
     # Generate pressure points with variations
     base_points = np.linspace(0, 4*np.pi, num_pressure_points)
@@ -50,19 +60,19 @@ def generate_sample(is_action_potential=True, num_pressure_points=num_pressure_p
     
     # Create the sample text
     sample = f"""This is the neurons morphology: 
-Soma length: {soma_length:.4f} meters
-Soma diameter: {soma_diameter:.4f} meters
-Dendrite length: {dendrite_length:.4f} meters
-Dendrite diameter: {dendrite_diameter:.4f} meter
+Soma length: {p["soma_length"]} meters
+Soma diameter: {p["soma_diameter"]} meters
+Dendrite length: {p["dend_length"]} meters
+Dendrite diameter: {p["dend_diameter"]} meter
 This is the neurons biophysics: 
-Axial resistance: {axial_resistance:.4f} Ohm*cm 
-Membrane capacitance: {membrane_capacitance:.4f} microfarads/cm^2
-Sodium Conductance: {sodium_conductance:.4f} siemens
-Potassium Conductance: {potassium_conductance:.4f} siemens 
-Leak conductance: {leak_conductance:.4f} siemens 
-Reversal potential: {reversal_potential:.4f} millivolts 
-Passive conductance: {passive_conductance:.4f} siemens
-Leak reversal potential: {leak_reversal_potential:.4f} millivolts 
+Axial resistance: {p["axial_resistance"]} Ohm*cm 
+Membrane capacitance: {p["membrane_capacitance"]} microfarads/cm^2
+Sodium Conductance: {p["sodium_conductance"]} siemens
+Potassium Conductance: {p["potassium_conductance"]} siemens 
+Leak conductance: {p["leak_conductance"]} siemens 
+Reversal potential: {p["reversal_potential"]} millivolts 
+Passive conductance: {p["passive_conductance"]} siemens
+Leak reversal potential: {p["leak_reversal_potential"]} millivolts 
 Ultrasound stimulation: 
 Pressure points:{pressure_points.tolist()}"""
     
@@ -83,13 +93,13 @@ def generate_dataset(num_samples_per_class, num_pressure_points=num_pressure_poi
     # Generate samples for each class
     for i in range(num_samples_per_class):
         # Action potential samples
-        ap_sample = generate_sample(is_action_potential=True, num_pressure_points=num_pressure_points)
+        ap_sample = generate_sample(num_pressure_points=num_pressure_points)
         ap_file = ap_dir / f'sample_{i+1}.txt'
         with open(ap_file, 'w') as f:
             f.write(ap_sample)
         
         # No action potential samples
-        no_ap_sample = generate_sample(is_action_potential=False, num_pressure_points=num_pressure_points)
+        no_ap_sample = generate_sample(num_pressure_points=num_pressure_points)
         no_ap_file = no_ap_dir / f'sample_{i+1}.txt'
         with open(no_ap_file, 'w') as f:
             f.write(no_ap_sample)
