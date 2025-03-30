@@ -2,6 +2,7 @@ import keras
 from keras import ops
 from keras import layers
 from keras.models import load_model
+from keras.src.metrics import TrueNegatives
 import numpy as np
 import tensorflow as tf
 import random
@@ -9,15 +10,16 @@ import wandb
 from wandb.integration.keras import WandbMetricsLogger
 from generate_experimental_data_set import load_data
 
-
+patience = 10
 
 wandb.login()
 
 learning_rate = 0.001
-epochs = 10
+epochs = 50
 #setting up wandb
 
-wandb.init(config={"bs":12})
+
+wandb.init(name = f"Squid_AR_P{patience}_lr{learning_rate}", config={"bs":12})
 
 
 
@@ -151,7 +153,7 @@ x_val = keras.utils.pad_sequences(x_val, maxlen=maxlen)
 
 #create classifier model using transformer layer 
 # Enhanced model parameters
-embed_dim = 128  # Larger embedding for better context
+embed_dim = 128  # Larger embedding for better context - what comes out of matrix mutliplcation 
 num_heads = 8    # More attention heads for nuanced understanding
 ff_dim = 256     # Larger feed-forward for complex patterns
 
@@ -223,7 +225,7 @@ def load_trained_model(filename="testing_experimntal_data"):
 
 #train and evlaluate
 
-train_model = False  # Set to True to train the model
+train_model = True  # Set to True to train the model
 if train_model:
     # Compile model with multiple outputs
     model.compile(
@@ -260,7 +262,7 @@ if train_model:
         callbacks=[
             keras.callbacks.EarlyStopping(
                 monitor='val_loss',
-                patience=2,
+                patience=patience,
                 restore_best_weights=True
             ),
             keras.callbacks.ReduceLROnPlateau(
@@ -281,6 +283,7 @@ if train_model:
 else:
     # Load existing model
     model = load_trained_model("transformer_model_enhanced.keras")
+
 
 
 
