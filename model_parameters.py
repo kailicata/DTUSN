@@ -4,6 +4,8 @@ model_parameters = {
 
         #Neuron parameters
 
+"species" : "Squid" ,
+
 # morphology
 "soma_length" : 12.6157, #length of soma (meters)
 
