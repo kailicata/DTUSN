@@ -19,10 +19,15 @@ from kwave.utils.signals import reorder_binary_sensor_data
 from pressure_physics_DTUSN import make_pressure
 #loading neuron libraries 
 from neuron import h,gui
-from neuron.units import ms, mV 
+from neuron.units import V, ms, mV 
 
 
 from model_parameters import model_parameters as mp
+
+
+
+
+
 
 import numpy as np
 
@@ -100,8 +105,8 @@ def neuron_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite
     pressure_point_x = np.where(sensor_data)[1]
     pressure_point_y = np.where(sensor_data)[0]
     #the coordintas of the initial pressure point (0,0) on the grid system 
-    #print("The x-coordinate of the initial pressure point is " + str(pressure_point_x))
-    #print("The y-coordinate of the initial pressure point is " + str(pressure_point_y))
+    print("The x-coordinate of the initial pressure point is " + str(pressure_point_x))
+    print("The y-coordinate of the initial pressure point is " + str(pressure_point_y))
     print("pressure intensity" + str(pressure_intensity)) #Pa (N/m^2)
     #ex: 1998.3013 Pa
 
@@ -132,7 +137,10 @@ def neuron_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite
 
     plt.show()
 
+
 #ultrasound simulation
+
+
 def ultrasound_simulation():
     #create empty array
     karray = kWaveArray()
@@ -230,6 +238,11 @@ def ultrasound_simulation():
     pm1_mask[:, -pm1_size:]=1
 
 
+    return source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid
+
+
+
+def ultrasound_plot(sensor, logical_p0, pm1_mask, combined_sensor_data, kgrid):
     #plot source, sensor, and pml masks
 
     #assign unique values to each mask
@@ -307,12 +320,11 @@ def ultrasound_simulation():
 
     plt.show()
 
-    return source_points , sensor_data, sensor_location 
-
 #neuron simulation
 class Cell:
-    def __init__(self, gid, x,y, z, theta):
+    def __init__(self, gid, x,y, z, theta, model_parameters):
         self._gid = gid
+        self.model_parameters = model_parameters
         self._setup_morphology()
         self.all = self.soma.wholetree()
         self._setup_biophysics()
@@ -363,26 +375,26 @@ class BallAndStick(Cell):
         self.soma = h.Section(name="soma", cell=self)
         self.dend = h.Section(name="dend", cell=self)
         self.dend.connect(self.soma)
-        self.soma.L = self.soma.diam = mp["soma_length"]
-        self.dend.L = mp["dend_length"]
-        self.dend.diam = mp["dend_diameter"]
+        self.soma.L = self.soma.diam = self.model_parameters["soma_length"]
+        self.dend.L = self.model_parameters["dend_length"]
+        self.dend.diam = self.model_parameters["dend_diameter"]
 
     def _setup_biophysics(self):
         for sec in self.all:
-            self.Ra = mp["axial_res"] #axial resistance in Ohm*cm
-            sec.cm = mp["membrane_cap"] #membrane capactiance in micro farads/cm^s
+            self.Ra = self.model_parameters["axial_res"] #axial resistance in Ohm*cm
+            sec.cm = self.model_parameters["membrane_cap"] #membrane capactiance in micro farads/cm^s
         self.soma.insert("hh")
         for seg in self.soma:
-            seg.hh.gnabar = mp["Na_conductance"] #sodium conductance
-            seg.hh.gkbar = mp["K_conductance"]#potassium conductance 
-            seg.hh.gl = mp["leak_conductance"] #leak conductance
-            seg.hh.el = mp["rev_potential"] #reversal potential in mV
+            seg.hh.gnabar = self.model_parameters["Na_conductance"] #sodium conductance
+            seg.hh.gkbar = self.model_parameters["K_conductance"]#potassium conductance 
+            seg.hh.gl = self.model_parameters["leak_conductance"] #leak conductance
+            seg.hh.el = self.model_parameters["rev_potential"] #reversal potential in mV
         #passive current in the dendrite 
         self.dend.insert("pas")
         self.dend.insert("ca")
         for seg in self.dend:
-            seg.pas.g = mp["passive_conductance"] #passive conductance
-            seg.pas.e = mp["leak_rev_potential"] #leak reversal potenatial mV
+            seg.pas.g = self.model_parameters["passive_conductance"] #passive conductance
+            seg.pas.e = self.model_parameters["leak_rev_potential"] #leak reversal potenatial mV
             """
             
             PARAMETER {
@@ -394,13 +406,15 @@ class BallAndStick(Cell):
             
             #**KL there is also eca and ica in seg and v is in section 
             if hasattr(seg, 'ca') == True:
+                """
                 print("this is the   Maximum conductance in calcium channe;" + str(seg.ca.gca))
                 print("this is the  Reversal potential for Ca in calcium channel" + str(seg.ca.ica))
+                """
                 print(" ")
-            
+            """
             print("this is the leak reversal potential in the dendrite" + str(seg.pas.e))
             print("this is the passive conductance in the dendrite" + str(seg.pas.g))
-            
+            """
 
 
         self.syn = h.ExpSyn(self.dend(0.5))
@@ -410,8 +424,8 @@ class Ring:
     an excitory synapse onto cell n + 1 and the last, Nth cell in the network
     projects to the first cell"""
     def __init__(
-            self, N= mp["number_neurons" ], stim_w=mp["stimulus_weight"], stim_t=mp["stimulus_time"], stim_delay=mp["stimulus_delay"], syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"]
-    ):
+            self,model_parameters, N= mp["number_neurons" ], stim_w=mp["stimulus_weight"], stim_t=mp["stimulus_time"], stim_delay=mp["stimulus_delay"], 
+            syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"]):
         """
         param N: numner of cells
         param stim_w: weight of the stimulus 
@@ -420,8 +434,10 @@ class Ring:
         param syn_w:synaptic weight
         param syn_delay: delay of the synapse
         param r: radius of the network
-        """
+        param model_parameters: dictionary of model parameters
+        """ 
         self._syn_w = syn_w
+        self.model_parameters = model_parameters
         self._syn_delay = syn_delay
         self._create_cells(N, r)
         self._connect_cells()
@@ -433,6 +449,8 @@ class Ring:
         self._nc.delay = stim_delay
         self._nc.weight[0] = stim_w
         self.set_pressure_point = []
+        
+
 
     def _create_cells(self, N, r):
         self.cells = []
@@ -440,7 +458,7 @@ class Ring:
             #offset_for_grid = (131.308, 227.432)
             theta = i * 2 *h.PI /N 
             self.cells.append(
-                BallAndStick(i,  h.cos(theta) * r,  h.sin(theta) * r , 0, theta)
+                BallAndStick(i,  h.cos(theta) * r,  h.sin(theta) * r , 0, theta, self.model_parameters)
             )
 
     def _connect_cells(self):
@@ -491,15 +509,30 @@ def extract_first_dendrite_points(cell):
 
 
 
+def compute_action_potential(model_parameters):
+    source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid = ultrasound_simulation()
+    ring = Ring(model_parameters,N=6)
+    return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid 
+
+def classify_action_potential(model_parameters):
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid  = compute_action_potential(model_parameters)
+    #print("type of ring cells soma v"+str(type(ring.cells[0].soma_v)))
+    peaks_array = np.sum(ring.cells[0].soma_v > 10)
+    high_in_first_100ms = peaks_array >= 1
+    return high_in_first_100ms
+
 
 
 
 if __name__ == "__main__":
-    source_points,sensor_data,sensor_location = ultrasound_simulation()
-    ring = Ring(N=6)
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid  = compute_action_potential(mp)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
 
     neuron_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite)
+
+    
+    #ultrasound_plot(sensor, logical_p0, pm1_mask, combined_sensor_data, kgrid)
+    ultrasound_plot(sensor, logical_p0, pm1_mask, combined_sensor_data, kgrid)
 
     shape_window = h.PlotShape(True)
     shape_window.show(0)
@@ -513,29 +546,50 @@ if __name__ == "__main__":
 
 
 
-    """
+   
 
 
     plt.plot(t, ring.cells[0].soma_v)
+    plt.title(f"{mp['species']} Soma Voltage Over Time")
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Voltage (mV)")
     plt.show()
 
     plt.figure()
     for i, cell in enumerate(ring.cells):
         plt.vlines(list(cell.spike_times), i +0.5, i +1.5)
+    plt.title(f"{mp['species']} Spike Times of Ring Network Cells")
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Cell Index")    
     plt.show()
 
 
     plt.figure()
     for syn_w, color in [(0.01, "black"), (0.005, "red")]:
-        ring = Ring(N=6, syn_w=syn_w)
+        ring = Ring(mp, N=6, syn_w=syn_w)
         h.finitialize(-65* mV)
         h.continuerun(100 * ms)
         for i, cell in enumerate(ring.cells):
-            plt.vlines(list(cell.spike_times), i +0.5, i +1.5, color = color)
+            plt.vlines(list(cell.spike_times), i +0.5, i +1.5, color = color)   
+    plt.title(f"{mp['species']} Spike Times of Ring Network Cells with Different Synaptic Weights")
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Cell Index")
     plt.show()
 
 
-    """
+
+"""
+
+new_list = []
+
+for i in sensor_data[0]:
+    new_list.append(i)
+
+print(new_list)
+
+
+ 
+"""
 
 
 
