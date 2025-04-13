@@ -2,6 +2,7 @@
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
+import json
 #loading ultrasound libraries 
 from kwave.data import Vector
 from kwave.kgrid import kWaveGrid 
@@ -24,17 +25,20 @@ from neuron.units import V, ms, mV
 
 
 from model_parameters import model_parameters as mp
-from neuron_ultrasound_model_plot import neuron, neuron_and_ultrasound_plot, soma_voltage_over_time, plot_spike_times, plot_spike_times_with_synaptic_weights, plot_simulation_masks, plot_sensor_data_image, plot_sensor_trace
+from neuron_ultrasound_model_plot import ring_of_neurons, neuron_and_ultrasound_plot, soma_voltage_over_time, plot_spike_times, plot_spike_times_with_synaptic_weights, plot_simulation_masks, plot_sensor_data_image, plot_sensor_trace
 
 
-
-
-
-import numpy as np
+import numpy as npx
 
 h.load_file("stdrun.hoc")
 
-#neuron and ultrasound simulation plot 
+def load_extracted_cell_coordinates():
+    #load dictionary of coordinates from json file
+    with open("cell_data_scaled.json", "r") as f:
+        return json.load(f)
+    
+
+
 
 #ultrasound simulation
 
@@ -140,41 +144,66 @@ def ultrasound_simulation():
 
 #neuron simulation
 class Cell:
-    def __init__(self, gid, x,y, z, theta, model_parameters):
+    def __init__(self, gid, x,y, z, theta, model_parameters, cell_data):
+        self.cell_data = cell_data
         self._gid = gid
         self.model_parameters = model_parameters
         self._setup_morphology()
+
         self.all = self.soma.wholetree()
+
+        self.external_all = [cell_data["scaled_soma_coordinates_micrometers"], cell_data["scaled_dendrite_coordinates_micrometers"]]
+
         self._setup_biophysics()
+
         self.x = self.y = self.z =0 
         h.define_shape()
         self._rotate_z(theta)
         self._set_position(x, y, z)
-
         self._spike_detector = h.NetCon(self.soma(0.5)._ref_v, None, sec=self.soma)
         self.spike_times = h.Vector()
         self._spike_detector.record(self.spike_times)
-
         self._ncs = []
-        
         self.soma_v = h.Vector().record(self.soma(0.5)._ref_v)
 
     def __repr__(self):
         return"{}[{}]".format(self.name, self._gid)
     
     def _set_position(self, x, y, z):
-        for sec in self.all:
+        #setting position of the cell memebrane points 
+        for sec_index,sec in enumerate(self.all):
+            #these are the orginal segment points from the simultor which we dont want 
+            #KL we dont want them. in the future delete them 
             for i in range(sec.n3d()):
                 sec.pt3dchange(
+                    #these are the orginal segment points 
                     i,
                     x - self.x + sec.x3d(i),
                     y - self.y + sec.y3d(i),
                     z - self.z + sec.z3d(i),
                     sec.diam3d(i),
                 )
+        #these are the new external segment points from the confocal image  
+        for sec_index,sec in enumerate(self.all):
+            for i in range(len(self.external_all[sec_index])):
+                x_external = self.external_all[sec_index][i][0]
+                y_external = self.external_all[sec_index][i][1]
+                z_external = 0
+                #dvec = h.Vector([0])
+                # adding the external segment points 
+                sec.pt3dadd(
+                    #these are the new external segment points 
+                    x - self.x + x_external,
+                    y - self.y + y_external,
+                    z - self.z + z_external,
+                    sec.diam3d(i)
+                )
+
                 #print( (i, x, y, z, sec.x3d(i), sec.y3d(i), sec.z3d(i)))
                 #print( (sec.x3d(i), sec.y3d(i)))
-        self.x, self.y, self.z = x, y, z
+        #this is the origin of the entire cell 
+        self.x, self.y, self.z = x, y, z 
+       #print("self.x, self.y, self.z are " + str(self.x) + ", " + str(self.y) + ", " + str(self.z))
     
     def _rotate_z(self, theta):
         for sec in self.all:
@@ -186,6 +215,8 @@ class Cell:
                 xprime = x * c - y * s
                 yprime = x * s + y * c
                 sec.pt3dchange(i, xprime, yprime, sec.z3d(i), sec.diam3d(i))
+                #print("sec.x3d(i), sec.y3d(i) are " + str(sec.x3d(i)) + ", " + str(sec.y3d(i)))
+
 class BallAndStick(Cell):
     name = "BallAndStick"
 
@@ -243,7 +274,7 @@ class Ring:
     projects to the first cell"""
     def __init__(
             self,model_parameters, N= mp["number_neurons" ], stim_w=mp["stimulus_weight"], stim_t=mp["stimulus_time"], stim_delay=mp["stimulus_delay"], 
-            syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"]):
+            syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"], cell_data=None):
         """
         param N: numner of cells
         param stim_w: weight of the stimulus 
@@ -257,7 +288,7 @@ class Ring:
         self._syn_w = syn_w
         self.model_parameters = model_parameters
         self._syn_delay = syn_delay
-        self._create_cells(N, r)
+        self._create_cells(N, r, cell_data)
         self._connect_cells()
         #add stimulus
         self._netstim = h.NetStim()
@@ -267,16 +298,16 @@ class Ring:
         self._nc.delay = stim_delay
         self._nc.weight[0] = stim_w
         self.set_pressure_point = []
-        
+        self.cell_data = cell_data
 
 
-    def _create_cells(self, N, r):
+    def _create_cells(self, N, r, cell_data):
         self.cells = []
         for i in range(N):
             #offset_for_grid = (131.308, 227.432)
             theta = i * 2 *h.PI /N 
             self.cells.append(
-                BallAndStick(i,  h.cos(theta) * r,  h.sin(theta) * r , 0, theta, self.model_parameters)
+                BallAndStick(i,  h.cos(theta) * r,  h.sin(theta) * r , 0, theta, self.model_parameters, cell_data)
             )
 
     def _connect_cells(self):
@@ -320,13 +351,13 @@ def extract_first_dendrite_points(cell):
     return [x, y, z]
 
 
-def compute_action_potential(model_parameters):
+def compute_action_potential(model_parameters, cell_data):
     source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid = ultrasound_simulation()
-    ring = Ring(model_parameters,N=6)
+    ring = Ring(model_parameters,N=6, cell_data=cell_data)
     return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid 
 
-def classify_action_potential(model_parameters):
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid  = compute_action_potential(model_parameters)
+def classify_action_potential(model_parameters, cell_data):
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid  = compute_action_potential(model_parameters, cell_data)
     #print("type of ring cells soma v"+str(type(ring.cells[0].soma_v)))
     peaks_array = np.sum(ring.cells[0].soma_v > 10)
     high_in_first_100ms = peaks_array >= 1
@@ -336,23 +367,26 @@ def classify_action_potential(model_parameters):
 
 
 if __name__ == "__main__":
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid  = compute_action_potential(mp)
+    cell_data = load_extracted_cell_coordinates()
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid  = compute_action_potential(mp, cell_data)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
 
 
     #PLOTS 
 
     plotting_on = True
-    models_on = False 
-    data_graphs_on = True 
+    models_on = True 
+    data_graphs_on = False 
     
 
     if plotting_on:
         if models_on:
             #Neuron plot
-            neuron(ring)
+            ring_of_neurons(ring)
             #Neuron and ultrasound plot
+            """
             neuron_and_ultrasound_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite)
+            """
         if data_graphs_on:
             #Simulation masks
             plot_simulation_masks(sensor, logical_p0, pm1_mask)
