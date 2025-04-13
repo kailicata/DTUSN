@@ -3,7 +3,7 @@ import matplotlib as mpl
 import numpy as np
 
 
-def neuron(ring):
+def ring_of_neurons(ring):
 
     # Create an empty numpy array
     xn = np.array([])
