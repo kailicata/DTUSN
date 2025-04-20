@@ -3,6 +3,33 @@ import matplotlib as mpl
 import numpy as np
 
 
+
+def neuron_plot(cell):
+    # Create empty arrays to hold coordinates
+    xn = np.array([])
+    yn = np.array([])
+    zn = np.array([])
+
+    # Collect 3D coordinates from soma and dendrite
+    for sec in cell.all:
+        for i in range(sec.n3d()):
+            xn = np.append(xn, sec.x3d(i))
+            yn = np.append(yn, sec.y3d(i))
+            zn = np.append(zn, sec.z3d(i))
+
+    # Plotting
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+    ax.scatter(xn, yn, zn, marker='o', color=(0, 1, 0))  # green for neuron
+
+    ax.set_xlabel('neuron cell len (micrometers)')
+    ax.set_ylabel('neuron cell len (micrometers)')
+    ax.set_zlabel('neuron cell len (micrometers)')
+    plt.title("Single Neuron Morphology")
+    plt.show()
+
+
+
 def ring_of_neurons(ring):
 
     # Create an empty numpy array
@@ -34,7 +61,6 @@ def ring_of_neurons(ring):
     ax.set_zlabel('neuron cell len (micrometers)')
 
     plt.show()
-
 
 
 def neuron_and_ultrasound_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite):
