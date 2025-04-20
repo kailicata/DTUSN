@@ -25,7 +25,7 @@ from neuron.units import V, ms, mV
 
 
 from model_parameters import model_parameters as mp
-from neuron_ultrasound_model_plot import ring_of_neurons, neuron_and_ultrasound_plot, soma_voltage_over_time, plot_spike_times, plot_spike_times_with_synaptic_weights, plot_simulation_masks, plot_sensor_data_image, plot_sensor_trace
+from neuron_ultrasound_model_plot import ring_of_neurons, neuron_plot, soma_voltage_over_time, plot_spike_times, plot_spike_times_with_synaptic_weights, plot_simulation_masks, plot_sensor_data_image, plot_sensor_trace
 
 
 import numpy as npx
@@ -323,6 +323,19 @@ class Ring:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 def extract_first_dendrite_points(cell):
     dendrite = cell.all[1]
     x_coordinate = []
@@ -382,7 +395,8 @@ if __name__ == "__main__":
     if plotting_on:
         if models_on:
             #Neuron plot
-            ring_of_neurons(ring)
+            #ring_of_neurons(ring)
+            neuron_plot(ring.cells[0])
             #Neuron and ultrasound plot
             """
             neuron_and_ultrasound_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite)
