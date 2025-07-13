@@ -38,7 +38,22 @@ def load_extracted_cell_coordinates():
         return json.load(f)
     
 
+def membrane_vibration(frequency, amplitude, time, duration):
+    """
+    Simulates membrane displacement over time due to ultrasound.
 
+    Parameters:
+        frequency (float): Frequency of ultrasound in Hz
+        amplitude (float): Max displacement in micrometers
+        time (numpy array): Time points in ms
+        duration (float): Duration of ultrasound pulse in ms
+
+    Returns:
+        displacement (numpy array): Displacement values at each time point
+    """
+    omega = 2 * np.pi * frequency / 1000  # Convert Hz to ms⁻¹
+    displacement = amplitude * np.sin(omega * time) * (time < duration)
+    return displacement
 
 #ultrasound simulation
 
@@ -268,6 +283,28 @@ class BallAndStick(Cell):
 
         self.syn = h.ExpSyn(self.dend(0.5))
         self.syn.tau = 2 * ms 
+
+    def apply_mechanosensitive_modulation(self, vibration_amp):
+        """
+        Modifies K+ and Ca2+ channel conductances based on membrane vibration amplitude.
+
+        Parameters:
+            vibration_amp (float): Max vibration amplitude (e.g., in micrometers)
+        """
+        scaling_factor_k = 1 + 0.3 * vibration_amp  # e.g., 30% increase per micron stretch
+        scaling_factor_ca = 1 + 0.2 * vibration_amp
+
+        for seg in self.soma:
+            seg.hh.gkbar *= scaling_factor_k  # stretch-sensitive K+ channel (TRAAK/TREK-1)
+        
+        for seg in self.dend:
+            if hasattr(seg, 'ca'):
+                seg.ca.gca *= scaling_factor_ca  # stretch-sensitive Ca²⁺ channel (PIEZO)
+
+
+
+
+
 class Ring:
     """a network of *N* ball and stick cells where cell n makes 
     an excitory synapse onto cell n + 1 and the last, Nth cell in the network
@@ -363,14 +400,22 @@ def extract_first_dendrite_points(cell):
     #print(x,y,z)
     return [x, y, z]
 
-
 def compute_action_potential(model_parameters, cell_data):
     source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid = ultrasound_simulation()
-    ring = Ring(model_parameters,N=6, cell_data=cell_data)
-    return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid 
+    ring = Ring(model_parameters,mp["number_neurons"], cell_data=cell_data)
+    # Simulate 5 MHz ultrasound for 30 ms with 0.8 µm amplitude
+    time = np.linspace(0, 50, 5000)  # 0 to 50 ms
+    vibration = membrane_vibration(frequency=5e6, amplitude=0.8, time=time, duration=30)
+
+    # Get the peak displacement
+    vibration_amp = np.max(np.abs(vibration))
+
+    # Apply it to the cell's gating
+    ring.cells[0].apply_mechanosensitive_modulation(vibration_amp)
+    return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp
 
 def classify_action_potential(model_parameters, cell_data):
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid  = compute_action_potential(model_parameters, cell_data)
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp   = compute_action_potential(model_parameters, cell_data)
     #print("type of ring cells soma v"+str(type(ring.cells[0].soma_v)))
     peaks_array = np.sum(ring.cells[0].soma_v > 10)
     high_in_first_100ms = peaks_array >= 1
@@ -381,26 +426,38 @@ def classify_action_potential(model_parameters, cell_data):
 
 if __name__ == "__main__":
     cell_data = load_extracted_cell_coordinates()
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid  = compute_action_potential(mp, cell_data)
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp  = compute_action_potential(mp, cell_data)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
+    
 
 
     #PLOTS 
 
-    plotting_on = True
-    models_on = True 
+    plotting_on = False
+    models_on = False 
     data_graphs_on = False 
+    print_result = True
     
+
+    if print_result:
+        cell = ring.cells[0]
+        print("Original gkbar:", cell.model_parameters["K_conductance"])
+        print("Modulated gkbar:", cell.soma(0.5).hh.gkbar)
+        print("Applied vibration amplitude:", vibration_amp)
+        print(" ")
+        ap_occurred = classify_action_potential(mp, cell_data)
+        print("action potential occured = " + str(ap_occurred))
+
 
     if plotting_on:
         if models_on:
             #Neuron plot
-            #ring_of_neurons(ring)
+            ring_of_neurons(ring)
             neuron_plot(ring.cells[0])
             #Neuron and ultrasound plot
-            """
-            neuron_and_ultrasound_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite)
-            """
+            
+            #neuron_and_ultrasound_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite)
+            
         if data_graphs_on:
             #Simulation masks
             plot_simulation_masks(sensor, logical_p0, pm1_mask)
@@ -413,11 +470,10 @@ if __name__ == "__main__":
             plot_spike_times(ring,mp)
             plot_spike_times_with_synaptic_weights(ring,mp,h, mV,ms,Ring)
             
+    print(" ")
+    print("------------------------------------------")
+    print(" ")
     print("Simulation Complete!")
-
-
-
-   
 
 
 
@@ -433,7 +489,6 @@ for i in sensor_data[0]:
 print(new_list)
 
 
- 
 """
 
 
