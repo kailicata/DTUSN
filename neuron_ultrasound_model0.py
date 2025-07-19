@@ -32,10 +32,26 @@ import numpy as npx
 
 h.load_file("stdrun.hoc")
 
-def load_extracted_cell_coordinates():
-    #load dictionary of coordinates from json file
+def load_extracted_cell_coordinates(scale_factor=0.01):
     with open("cell_data_scaled.json", "r") as f:
-        return json.load(f)
+        cell_data = json.load(f)
+    all_x = [coord[0] for coord in cell_data["scaled_soma_coordinates_micrometers"]] + \
+    [coord[0] for coord in cell_data["scaled_dendrite_coordinates_micrometers"]]
+    all_y = [coord[1] for coord in cell_data["scaled_soma_coordinates_micrometers"]] + \
+    [coord[1] for coord in cell_data["scaled_dendrite_coordinates_micrometers"]]
+
+    print("Max X (µm):", max(all_x))
+    print("Max Y (µm):", max(all_y))
+
+    for sec in cell_data["scaled_soma_coordinates_micrometers"]:
+        sec[0] *= scale_factor
+        sec[1] *= scale_factor
+
+    for sec in cell_data["scaled_dendrite_coordinates_micrometers"]:
+        sec[0] *= scale_factor
+        sec[1] *= scale_factor
+
+    return cell_data
     
 
 def membrane_vibration(frequency, amplitude, time, duration):
@@ -54,6 +70,14 @@ def membrane_vibration(frequency, amplitude, time, duration):
     omega = 2 * np.pi * frequency / 1000  # Convert Hz to ms⁻¹
     displacement = amplitude * np.sin(omega * time) * (time < duration)
     return displacement
+
+def pressure_to_voltage(pressure_pa):
+    """
+    Convert pressure (in Pascals) to an estimated voltage shift (in mV).
+    This is a placeholder linear function; refine with better model later.
+    """
+    alpha = 0.002  # sensitivity coefficient [mV/Pa], adjust if needed
+    return alpha * pressure_pa
 
 #ultrasound simulation
 
@@ -82,7 +106,7 @@ def ultrasound_simulation():
     element_pos[:,0] = Vector([12**-7,0])
     element_pos[:,1] = Vector([10**-7,0])
 
-    ultrasound_offset = [50*10**-6 , 50*10**-6]
+    ultrasound_offset = [50*10**-6 , 50*10**-6]  # match segment positions
 
     for i in range(num_elemenst):
         element_pos[:,i] = Vector([ultrasound_offset[0] + 10**-7 + i*10**-7 ,ultrasound_offset[1] +0])
@@ -107,15 +131,17 @@ def ultrasound_simulation():
     #time array
     #make time is from the medium sound speed and is in micro seconds
     kgrid.makeTime(medium.sound_speed)
-
+    # Get time array in seconds
     source = kSource()
     x_offset = 20
-    #make a small disc in the top left of the domain
-    #KL** source.p0 is where the inital pressure points are defined (Pa)
-    source.p0 = make_pressure(N, Vector([N.x/4+ x_offset, N.y/4]),4)
-    source_points = source.p0
+    source.p_mask = make_pressure(N, Vector([N.x//4 + x_offset, N.y//4]), 4)
+    logical_p0 = source.p_mask.astype(bool)
+
+    # Get time array in seconds
+    
+    source_points = source.p_mask
     #source.p0[99:119, 59:199]=1
-    logical_p0 = source.p0.astype(bool)
+    #logical_p0 = source.p0.astype(bool)
     sensor = kSensor()
     sensor.mask = element_pos
     simulation_options = SimulationOptions(
@@ -152,6 +178,9 @@ def ultrasound_simulation():
     pm1_mask[:, :pm1_size]=1
     pm1_mask[-pm1_size:, :]=1
     pm1_mask[:, -pm1_size:]=1
+
+    print("Grid width (µm):", kgrid.Nx * kgrid.dx * 1e6)
+    print("Grid height (µm):", kgrid.Ny * kgrid.dy * 1e6)
 
 
     return source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid
@@ -301,6 +330,24 @@ class BallAndStick(Cell):
             if hasattr(seg, 'ca'):
                 seg.ca.gca *= scaling_factor_ca  # stretch-sensitive Ca²⁺ channel (PIEZO)
 
+    def apply_local_pressure_modulation(self, segment_pressures):
+        """
+        Modulates each segment’s ion channels based on its local pressure.
+        """
+        idx = 0
+        for sec in self.all:
+            for seg in sec:
+                if idx < len(segment_pressures):
+                    pressure = segment_pressures[idx]
+                    delta_v = pressure_to_voltage(pressure)
+
+                    # Example: scale K+ and Ca2+ channels
+                    if hasattr(seg, 'hh'):
+                        seg.hh.gkbar *= 1 + 0.3 * delta_v  # K+ modulation
+                    if hasattr(seg, 'ca'):
+                        seg.ca.gca *= 1 + 0.2 * delta_v  # Ca2+ modulation
+
+                    idx += 1
 
 
 
@@ -400,12 +447,48 @@ def extract_first_dendrite_points(cell):
     #print(x,y,z)
     return [x, y, z]
 
+def get_pressure_at_segment_locations(cell, pressure_grid, kgrid):
+    """
+    Maps ultrasound pressure from source.p0 (2D pressure field) to neuron segment positions.
+
+    Parameters:
+        cell: BallAndStick neuron
+        pressure_grid: np.ndarray of shape [Nx, Ny]
+        kgrid: kWaveGrid object
+
+    Returns:
+        segment_pressures: List of pressure values for each segment
+    """
+    segment_pressures = []
+
+    dx_um = kgrid.dx * 1e6
+    dy_um = kgrid.dy * 1e6
+    Nx = kgrid.Nx
+    Ny = kgrid.Ny
+
+    for sec_coords in cell.external_all:
+        for x_um, y_um in sec_coords:
+            x_idx = int(x_um / dx_um)
+            y_idx = int(y_um / dy_um)
+
+            #print("x_um:", x_um, "dx_um:", dx_um, "x_idx:", x_idx, "Nx:", Nx)
+
+            if 0 <= x_idx < Nx and 0 <= y_idx < Ny:
+                pressure = pressure_grid[x_idx, y_idx]
+            else:
+                pressure = 0
+
+            segment_pressures.append(pressure)
+
+    return segment_pressures
+
+
 def compute_action_potential(model_parameters, cell_data):
     source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid = ultrasound_simulation()
     ring = Ring(model_parameters,mp["number_neurons"], cell_data=cell_data)
     # Simulate 5 MHz ultrasound for 30 ms with 0.8 µm amplitude
     time = np.linspace(0, 50, 5000)  # 0 to 50 ms
-    vibration = membrane_vibration(frequency=5e6, amplitude=0.8, time=time, duration=30)
+    vibration = membrane_vibration(frequency=5e6,amplitude=0.8, time=time, duration=30)
 
     # Get the peak displacement
     vibration_amp = np.max(np.abs(vibration))
@@ -429,13 +512,21 @@ if __name__ == "__main__":
     ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp  = compute_action_potential(mp, cell_data)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
     
+    cell = ring.cells[0]
+    pressure_frame = combined_sensor_data  # already 2D 
+    segment_pressures = get_pressure_at_segment_locations(cell, pressure_frame, kgrid)
+
+    print("Number of segments with assigned pressures:", len(segment_pressures))
+    print("Example pressures:", segment_pressures[:5])
+
+    cell.apply_local_pressure_modulation(segment_pressures)
 
 
     #PLOTS 
 
-    plotting_on = False
-    models_on = False 
-    data_graphs_on = False 
+    plotting_on = True
+    models_on = True 
+    data_graphs_on = True 
     print_result = True
     
 
@@ -448,6 +539,8 @@ if __name__ == "__main__":
         ap_occurred = classify_action_potential(mp, cell_data)
         print("action potential occured = " + str(ap_occurred))
 
+        
+
 
     if plotting_on:
         if models_on:
@@ -459,6 +552,17 @@ if __name__ == "__main__":
             #neuron_and_ultrasound_plot(ring,source_points,sensor_data,sensor_location, p_first_dendrite)
             
         if data_graphs_on:
+
+            # Plot segment pressures
+            plt.figure(figsize=(10, 4))
+            plt.plot(segment_pressures)
+            plt.title("Ultrasound Pressure per Segment")
+            plt.xlabel("Segment Index")
+            plt.ylabel("Pressure (Pa)")
+            plt.grid(True)
+            plt.tight_layout()
+            plt.show()
+
             #Simulation masks
             plot_simulation_masks(sensor, logical_p0, pm1_mask)
             #Sensor data image
@@ -467,8 +571,11 @@ if __name__ == "__main__":
             plot_sensor_trace(kgrid, combined_sensor_data)
             #Soma voltage over time
             soma_voltage_over_time(ring,mp,h, mV,ms)
+            """
             plot_spike_times(ring,mp)
-            plot_spike_times_with_synaptic_weights(ring,mp,h, mV,ms,Ring)
+            plot_spike_times_with_synaptic_weights(ring, mp, h, mV, ms, Ring, cell_data)
+            """
+
             
     print(" ")
     print("------------------------------------------")

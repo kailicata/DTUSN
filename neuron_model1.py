@@ -149,9 +149,8 @@ class Interneuron_Group:
     def __init__(
         self,
         model_parameters,
-        cell_data=None
-    ):
-        """
+
+        
         N=mp["number_neurons"],
         stim_w=mp["stimulus_weight"],
         stim_t=mp["stimulus_time"],
@@ -159,11 +158,13 @@ class Interneuron_Group:
         syn_w=mp["synapse_weight"],
         syn_delay=mp["synapse_delay"],
         r=mp["radius"],
-        """
+        cell_data=None
+    ):
+        
         # Store parameters
-        self._syn_w = mp["synapse_delay"]
+        self._syn_w = syn_w #mp["stimulus_weight"]
         self.model_parameters = model_parameters
-        self._syn_delay = mp["synapse_delay"]
+        self._syn_delay = syn_delay #mp["synapse_delay"]
 
         # Build network
         self._create_cells(N, r, cell_data)
@@ -172,10 +173,10 @@ class Interneuron_Group:
         # Add stimulus to first cell in the ring
         self._netstim = h.NetStim()
         self._netstim.number = 1
-        self._netstim.start = mp["stimulus_time"]
+        self._netstim.start = stim_t #mp["stimulus_time"]
         self._nc = h.NetCon(self._netstim, self.cells[0].syn)
-        self._nc.delay = mp["stimulus_delay"]
-        self._nc.weight[0] = mp["stimulus_weight"]
+        self._nc.delay = stim_delay #mp["stimulus_delay"]
+        self._nc.weight[0] = stim_w #mp["stimulus_weight"]
 
         self.set_pressure_point = []  # Custom tag (unused unless updated)
         self.cell_data = cell_data

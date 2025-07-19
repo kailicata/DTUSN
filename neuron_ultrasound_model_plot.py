@@ -178,7 +178,8 @@ def plot_spike_times(ring, mp):
     plt.show()
 
 # Compare spike times under different synaptic weights
-def plot_spike_times_with_synaptic_weights(ring, mp, h, mV, ms, Ring):
+def plot_spike_times_with_synaptic_weights(ring, mp, h, mV, ms, RingClass, cell_data):
+    ring = RingClass(mp, N=6, syn_w=syn_w, cell_data=cell_data)
     plt.figure()
     for syn_w, color in [(0.01, "black"), (0.005, "red")]:
         ring = Ring(mp, N=6, syn_w=syn_w)
