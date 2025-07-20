@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 import json
+import sys
 #loading ultrasound libraries 
 from kwave.data import Vector
 from kwave.kgrid import kWaveGrid 
@@ -54,6 +55,20 @@ def load_extracted_cell_coordinates(scale_factor=0.01):
     
     return confocal_microscopy_data
     
+import os
+import sys
+import contextlib
+
+@contextlib.contextmanager
+def suppress_stdout():
+    with open(os.devnull, 'w') as devnull:
+        old_stdout = sys.stdout
+        sys.stdout = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
+
 
 def membrane_vibration(frequency, amplitude, time, duration):
     """
@@ -104,13 +119,13 @@ def ultrasound_simulation():
     #KL** used 2 sensors because only array works. positioned at center of nuerons and 0,0 
     #p = Vector([12**-7,0])
     #t = element_pos[:,0]
-    element_pos[:,0] = Vector([12**-7,0])
-    element_pos[:,1] = Vector([10**-7,0])
+    element_pos[:,0] = Vector([12**-8,0])
+    element_pos[:,1] = Vector([10**-8,0])
 
-    ultrasound_offset = [50*10**-6 , 50*10**-6]  # match segment positions
+    ultrasound_offset = [50*10**-7 , 50*10**-7]  # match segment positions
 
     for i in range(num_elemenst):
-        element_pos[:,i] = Vector([ultrasound_offset[0] + 10**-7 + i*10**-7 ,ultrasound_offset[1] +0])
+        element_pos[:,i] = Vector([ultrasound_offset[0] + 10**-8 + i*10**-8 ,ultrasound_offset[1] +0])
 
 
 
@@ -150,9 +165,10 @@ def ultrasound_simulation():
         data_cast='single',
     )
 
-    execution_options = SimulationExecutionOptions(is_gpu_simulation=False)
-    output = kspaceFirstOrder2D(kgrid, source, sensor, medium, simulation_options, execution_options)
+    execution_options = SimulationExecutionOptions(is_gpu_simulation=False, show_sim_log = False,verbose_level=0)
 
+    with suppress_stdout():
+        output = kspaceFirstOrder2D(kgrid, source, sensor, medium, simulation_options, execution_options)
     #reorder the sensor data returned by k-wave to match the order of the elemnsts in the array
     _, _, reorder_index = cart2grid(kgrid, element_pos)
     #sensor_data_point = reorder_binary_sensor_data(output["p"].T, reorder_index=reorder_index)
@@ -160,7 +176,8 @@ def ultrasound_simulation():
     sensor.mask = karray.get_array_binary_mask(kgrid)
     sensor_location = sensor.mask 
 
-    output = kspaceFirstOrder2D(kgrid, source, sensor, medium, simulation_options, execution_options)
+    with suppress_stdout():
+        output = kspaceFirstOrder2D(kgrid, source, sensor, medium, simulation_options, execution_options)
     #shape of sensor data is (140,1207) 
     #140 comes from sensor surface area points  
     #each surface area sensor point has 1207 pressure points 
@@ -456,35 +473,42 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid):
         segment_pressures: List of pressure values for each segment
     """
     segment_pressures = []
-
+    #kgrid dx is in meters NOT micro meters, which is why we multiply by 1e6
     dx_um = kgrid.dx * 1e6
-    dy_um = kgrid.dy * 1e6
+    dy_um = kgrid.dy  * 1e6
+    print("kgrid.dx:", dx_um, "kgrid.dy:", dy_um)
     Nx = kgrid.Nx
     Ny = kgrid.Ny
 
     for sec_coords in cell.external_all:
         for x_um, y_um in sec_coords:
-            x_idx = int(x_um / dx_um)
-            y_idx = int(y_um / dy_um)
+            x_idx = int((x_um) / dx_um)
+            y_idx = int((y_um) / dy_um)
+            print("x_um:", x_um, "y_um:", y_um, "dx_um:", dx_um, "dy_um:", dy_um, "x_idx_neuron:", x_idx, "y_idx_neuron:", y_idx, "Nx_ultrasound:", Nx, "Ny_ultrasouns:", Ny)
 
             #print("x_um:", x_um, "dx_um:", dx_um, "x_idx:", x_idx, "Nx:", Nx)
 
             if 0 <= x_idx < Nx and 0 <= y_idx < Ny:
-                pressure = pressure_grid[x_idx, y_idx]
+                pressure = pressure_grid[y_idx, x_idx]
             else:
                 pressure = 0
 
             segment_pressures.append(pressure)
 
+    pry7yg87g7g
+
     return segment_pressures
 
 
-def compute_action_potential(model_parameters, confocal_microscopy_data):
+def compute_action_potential(model_parameters, confocal_microscopy_data,params):
     source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid = ultrasound_simulation()
     ring = Ring(model_parameters,mp["number_neurons"], confocal_microscopy_data=confocal_microscopy_data)
     # Simulate 5 MHz ultrasound for 30 ms with 0.8 µm amplitude
     time = np.linspace(0, 50, 5000)  # 0 to 50 ms
-    vibration = membrane_vibration(frequency=5e6,amplitude=0.8, time=time, duration=30)
+    frequency = params["frequency"]  # e.g., 5e6 Hz
+    amplitude = params["amplitude"]  # e.g., 0.8 µm
+    duration = params["duration"]  # e.g., 30 ms
+    vibration = membrane_vibration(frequency,amplitude, time, duration)
 
     # Get the peak displacement
     vibration_amp = np.max(np.abs(vibration))
@@ -495,8 +519,8 @@ def compute_action_potential(model_parameters, confocal_microscopy_data):
 
     return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp
 
-def classify_action_potential(model_parameters, confocal_microscopy_data):
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp   = compute_action_potential(model_parameters, confocal_microscopy_data)
+def classify_action_potential(model_parameters, confocal_microscopy_data, params):
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp   = compute_action_potential(model_parameters, confocal_microscopy_data,params)
     #print("type of ring cells soma v"+str(type(ring.cells[0].soma_v)))
     """
     print(np.sum(ring.cells[0].soma_v > 1000))
@@ -508,11 +532,8 @@ def classify_action_potential(model_parameters, confocal_microscopy_data):
     spikes = np.sum(soma_v_np > 0)
     return spikes > 0
 
-
-if __name__ == "__main__":
-    confocal_microscopy_data = load_extracted_cell_coordinates()
-
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp  = compute_action_potential(mp, confocal_microscopy_data)
+def run_simulation(params):
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp  = compute_action_potential(mp, confocal_microscopy_data,params)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
     
     cell = ring.cells[0]
@@ -532,7 +553,7 @@ if __name__ == "__main__":
     #PLOTS 
 
     plotting_on = True
-    models_on = True 
+    models_on = False 
     data_graphs_on = False 
     print_result = True
     
@@ -543,7 +564,14 @@ if __name__ == "__main__":
         print("Modulated gkbar:", cell.soma(0.5).hh.gkbar)
         print("Applied vibration amplitude:", vibration_amp)
         print(" ")
-        ap_occurred = classify_action_potential(mp, confocal_microscopy_data)
+        ap_occurred = classify_action_potential(mp, confocal_microscopy_data,params)
+        if ap_occurred == True:
+            print("frequnecy: " + str(frequency))
+            print("amplittude: " + str(amplitude))
+            print("duration: " +  str(duration))
+            print("Action potential occurred!")
+            sys.exit(0)
+
         print("action potential occured = " + str(ap_occurred))
 
         
@@ -583,6 +611,30 @@ if __name__ == "__main__":
             plot_spike_times_with_synaptic_weights(ring, mp, h, mV, ms, Ring, cell_data)
             """
 
+
+
+
+
+if __name__ == "__main__":
+    confocal_microscopy_data = load_extracted_cell_coordinates()
+
+    params = {}
+
+    frequencies = np.linspace(5e5, 5e6, 200)  # Frequencies from 500 kHz to 500 MHz
+    amplitudes = np.linspace(0.1, 1.5, 30)  # Amplitudes from 0.1 µm to 1.5 µm
+    durations = np.linspace(10, 100, 5)  # Durations from
+
+    for frequency in frequencies:
+        for amplitude in amplitudes:
+            for duration in durations:
+                params = {
+                    "frequency": frequency,
+                    "amplitude": amplitude,
+                    "duration": duration
+                }
+                print(f"Running simulation with params: {params}")
+                run_simulation(params)
+        
             
     print(" ")
     print("------------------------------------------")

@@ -55,11 +55,11 @@ model_parameters = {
         #ultrasound parameters
 #arc properties
 
-"arc_radius" : 100e-7, #radius of arc (meters)
+"arc_radius" : 100e-8, #radius of arc (meters)
 
-"arc_diameter" : 8e-7, #diameters of arc (meters)
+"arc_diameter" : 8e-8, #diameters of arc (meters)
 
-"ring_radius" : 50e-6, #radius of ring (meters)
+"ring_radius" : 50e-7, #radius of ring (meters)
 
 "num_ultrasound_detectors" : 3, #number of detectors
 
@@ -68,9 +68,9 @@ model_parameters = {
 
 "grid_y" : 256, #height of the grid
 
-"displacement_x" : 0.5e-6, #width of the displacement 
+"displacement_x" : 0.5e-7, #width of the displacement 
 
-"displacement_y" : 0.5e-6, #height of the displacement
+"displacement_y" : 0.5e-7, #height of the displacement
 
 #medium properties
 "sound_speed" : 1540, #sound speed in (meters/second)
