@@ -34,25 +34,25 @@ h.load_file("stdrun.hoc")
 
 def load_extracted_cell_coordinates(scale_factor=0.01):
     with open("cell_data_scaled.json", "r") as f:
-        cell_data = json.load(f)
+        confocal_microscopy_data = json.load(f)
     
-    all_x = [coord[0] for coord in cell_data["scaled_soma_coordinates_micrometers"]] + \
-    [coord[0] for coord in cell_data["scaled_dendrite_coordinates_micrometers"]]
-    all_y = [coord[1] for coord in cell_data["scaled_soma_coordinates_micrometers"]] + \
-    [coord[1] for coord in cell_data["scaled_dendrite_coordinates_micrometers"]]
+    all_x = [coord[0] for coord in confocal_microscopy_data["scaled_soma_coordinates_micrometers"]] + \
+    [coord[0] for coord in confocal_microscopy_data["scaled_dendrite_coordinates_micrometers"]]
+    all_y = [coord[1] for coord in confocal_microscopy_data["scaled_soma_coordinates_micrometers"]] + \
+    [coord[1] for coord in confocal_microscopy_data["scaled_dendrite_coordinates_micrometers"]]
 
     print("Max X (µm):", max(all_x))
     print("Max Y (µm):", max(all_y))
 
-    for sec in cell_data["scaled_soma_coordinates_micrometers"]:
+    for sec in confocal_microscopy_data["scaled_soma_coordinates_micrometers"]:
         sec[0] *= scale_factor
         sec[1] *= scale_factor
 
-    for sec in cell_data["scaled_dendrite_coordinates_micrometers"]:
+    for sec in confocal_microscopy_data["scaled_dendrite_coordinates_micrometers"]:
         sec[0] *= scale_factor
         sec[1] *= scale_factor
     
-    return cell_data
+    return confocal_microscopy_data
     
 
 def membrane_vibration(frequency, amplitude, time, duration):
@@ -189,15 +189,15 @@ def ultrasound_simulation():
 
 #neuron simulation
 class Cell:
-    def __init__(self, gid, x,y, z, theta, model_parameters, cell_data):
-        self.cell_data = cell_data
+    def __init__(self, gid, x,y, z, theta, model_parameters, confocal_microscopy_data):
+        self.cell_data = confocal_microscopy_data
         self._gid = gid
         self.model_parameters = model_parameters
         self._setup_morphology()
 
         self.all = self.soma.wholetree()
 
-        self.external_all = [cell_data["scaled_soma_coordinates_micrometers"], cell_data["scaled_dendrite_coordinates_micrometers"]]
+        self.external_all = [confocal_microscopy_data["scaled_soma_coordinates_micrometers"], confocal_microscopy_data["scaled_dendrite_coordinates_micrometers"]]
 
         self._setup_biophysics()
 
@@ -367,8 +367,8 @@ class Ring:
     an excitory synapse onto cell n + 1 and the last, Nth cell in the network
     projects to the first cell"""
     def __init__(
-            self,model_parameters, N, cell_data,stim_w=mp["stimulus_weight"], stim_t=mp["stimulus_time"], stim_delay=mp["stimulus_delay"], 
-            syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"]):
+            self,model_parameters, N=mp["number_neurons" ],stim_w=mp["stimulus_weight"], stim_t=mp["stimulus_time"], stim_delay=mp["stimulus_delay"], 
+            syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"],confocal_microscopy_data=None):
         """
         param N: numner of cells
         param stim_w: weight of the stimulus 
@@ -382,30 +382,30 @@ class Ring:
         self._syn_w = syn_w
         self.model_parameters = model_parameters
         self._syn_delay = syn_delay
-        self._create_cells(N, r, cell_data)
+        self._create_cells(N, r, confocal_microscopy_data)
         self._connect_cells()
         #add stimulus
         self._netstim = h.NetStim()
         self._netstim.number = 1
         self._netstim.start = stim_t
-        self._nc = h.NetCon(self._netstim, self.cell_data[0].syn)
+        self._nc = h.NetCon(self._netstim, self.cells[0].syn)
         self._nc.delay = stim_delay
         self._nc.weight[0] = stim_w
         self.set_pressure_point = []
-        self.cell_data = cell_data
+        self.confocal_microscopy_data = confocal_microscopy_data
 
 
-    def _create_cells(self, N, r, cell_data):
-        self.cell_data = []
+    def _create_cells(self, N, r, confocal_microscopy_data):
+        self.cells = []
         for i in range(N):
             #offset_for_grid = (131.308, 227.432)
             theta = i * 2 *h.PI /N 
-            self.cell_data.append(
-                BallAndStick(i,  h.cos(theta) * r,  h.sin(theta) * r , 0, theta, self.model_parameters, cell_data)
+            self.cells.append(
+                BallAndStick(i,  h.cos(theta) * r,  h.sin(theta) * r , 0, theta, self.model_parameters, confocal_microscopy_data)
             )
 
     def _connect_cells(self):
-        for source, target in zip(self.cell_data, self.cell_data[1:] + [self.cell_data[0]]):
+        for source, target in zip(self.cells, self.cells[1:] + [self.cells[0]]):
             nc = h.NetCon(source.soma(0.5)._ref_v, target.syn, sec=source.soma)
             nc.weight[0] = self._syn_w
             nc.delay = self._syn_delay
@@ -413,20 +413,6 @@ class Ring:
     
     def set_pressure_point(self,pressure_intensity):
         self.set_pressure_point = pressure_intensity
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -493,9 +479,9 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid):
     return segment_pressures
 
 
-def compute_action_potential(model_parameters, cell_data):
+def compute_action_potential(model_parameters, confocal_microscopy_data):
     source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid = ultrasound_simulation()
-    ring = Ring(model_parameters,mp["number_neurons"], cell_data=cell_data)
+    ring = Ring(model_parameters,mp["number_neurons"], confocal_microscopy_data=confocal_microscopy_data)
     # Simulate 5 MHz ultrasound for 30 ms with 0.8 µm amplitude
     time = np.linspace(0, 50, 5000)  # 0 to 50 ms
     vibration = membrane_vibration(frequency=5e6,amplitude=0.8, time=time, duration=30)
@@ -504,23 +490,29 @@ def compute_action_potential(model_parameters, cell_data):
     vibration_amp = np.max(np.abs(vibration))
 
     # Apply it to the cell's gating
-    ring.cell_data.apply_mechanosensitive_modulation(vibration_amp)
+    for cell in ring.cells:
+        cell.apply_mechanosensitive_modulation(vibration_amp)
+
     return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp
 
-def classify_action_potential(model_parameters, cell_data):
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp   = compute_action_potential(model_parameters, cell_data)
+def classify_action_potential(model_parameters, confocal_microscopy_data):
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp   = compute_action_potential(model_parameters, confocal_microscopy_data)
     #print("type of ring cells soma v"+str(type(ring.cells[0].soma_v)))
-    peaks_array = np.sum(ring.cells[0].soma_v > 10)
+    """
+    print(np.sum(ring.cells[0].soma_v > 1000))
+    peaks_array = 0 
     high_in_first_100ms = peaks_array >= 1
     return high_in_first_100ms
-
-
+    """
+    soma_v_np = np.array(ring.cells[0].soma_v.to_python())
+    spikes = np.sum(soma_v_np > 0)
+    return spikes > 0
 
 
 if __name__ == "__main__":
-    cell_data = load_extracted_cell_coordinates()
-    print(cell_data)
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp  = compute_action_potential(mp, cell_data)
+    confocal_microscopy_data = load_extracted_cell_coordinates()
+
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp  = compute_action_potential(mp, confocal_microscopy_data)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
     
     cell = ring.cells[0]
@@ -551,7 +543,7 @@ if __name__ == "__main__":
         print("Modulated gkbar:", cell.soma(0.5).hh.gkbar)
         print("Applied vibration amplitude:", vibration_amp)
         print(" ")
-        ap_occurred = classify_action_potential(mp, cell_data)
+        ap_occurred = classify_action_potential(mp, confocal_microscopy_data)
         print("action potential occured = " + str(ap_occurred))
 
         
