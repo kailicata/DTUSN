@@ -504,7 +504,7 @@ def compute_action_potential(model_parameters, cell_data):
     vibration_amp = np.max(np.abs(vibration))
 
     # Apply it to the cell's gating
-    ring.cell_data[0].apply_mechanosensitive_modulation(vibration_amp)
+    ring.cell_data.apply_mechanosensitive_modulation(vibration_amp)
     return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp
 
 def classify_action_potential(model_parameters, cell_data):
