@@ -203,8 +203,13 @@ class Cell:
 
         self.x = self.y = self.z =0 
         h.define_shape()
-        self._rotate_z(theta)
+
+        #rotate the external coordinates 
+        self._rotate_external_coordinates(theta)
+        #setting 
         self._set_position(x, y, z)
+        
+        
         self._spike_detector = h.NetCon(self.soma(0.5)._ref_v, None, sec=self.soma)
         self.spike_times = h.Vector()
         self._spike_detector.record(self.spike_times)
@@ -215,20 +220,21 @@ class Cell:
         return"{}[{}]".format(self.name, self._gid)
     
     def _set_position(self, x, y, z):
+
+        """
         #setting position of the cell memebrane points 
         for sec_index,sec in enumerate(self.all):
             #these are the orginal segment points from the simultor which we dont want 
             #KL we dont want them. in the future delete them 
-            for i in range(sec.n3d()):
-                sec.pt3dchange(
-                    #these are the orginal segment points 
-                    i,
-                    x - self.x + sec.x3d(i),
-                    y - self.y + sec.y3d(i),
-                    z - self.z + sec.z3d(i),
-                    sec.diam3d(i),
-                )
+            for i,p in enumerate(sec):
+                p[0] = x - self.x + p[0]
+                p[1] = y - self.y + p[1]
+                p[0] = x - self.x + p[0]
+        """
+
+    
         #these are the new external segment points from the confocal image  
+        #the json contaisn 3 griups of coordinates that came from the confocal image 
         for sec_index,sec in enumerate(self.all):
             for i in range(len(self.external_all[sec_index])):
                 x_external = self.external_all[sec_index][i][0]
@@ -250,16 +256,19 @@ class Cell:
         self.x, self.y, self.z = x, y, z 
        #print("self.x, self.y, self.z are " + str(self.x) + ", " + str(self.y) + ", " + str(self.z))
     
-    def _rotate_z(self, theta):
-        for sec in self.all:
-            for i in range(sec.n3d()):
-                x = sec.x3d(i)
-                y = sec.y3d(i)
+    def _rotate_external_coordinates(self, theta):
+        for sec in self.external_all:
+            for p in sec:
+                x = p[0]
+                y = p[1]
                 c = h.cos(theta)
                 s = h.sin(theta)
                 xprime = x * c - y * s
                 yprime = x * s + y * c
-                sec.pt3dchange(i, xprime, yprime, sec.z3d(i), sec.diam3d(i))
+                p[0] = xprime
+                p[1] = yprime
+
+                #sec.pt3dchange(p, xprime, yprime, sec.z3d(p), sec.diam3d(p))
                 #print("sec.x3d(i), sec.y3d(i) are " + str(sec.x3d(i)) + ", " + str(sec.y3d(i)))
 
 class BallAndStick(Cell):
@@ -358,8 +367,8 @@ class Ring:
     an excitory synapse onto cell n + 1 and the last, Nth cell in the network
     projects to the first cell"""
     def __init__(
-            self,model_parameters, N= mp["number_neurons" ], stim_w=mp["stimulus_weight"], stim_t=mp["stimulus_time"], stim_delay=mp["stimulus_delay"], 
-            syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"], cell_data=None):
+            self,model_parameters, N, cell_data,stim_w=mp["stimulus_weight"], stim_t=mp["stimulus_time"], stim_delay=mp["stimulus_delay"], 
+            syn_w=mp["synapse_weight"],syn_delay=mp["synapse_delay" ],r=mp["radius"]):
         """
         param N: numner of cells
         param stim_w: weight of the stimulus 
@@ -379,7 +388,7 @@ class Ring:
         self._netstim = h.NetStim()
         self._netstim.number = 1
         self._netstim.start = stim_t
-        self._nc = h.NetCon(self._netstim, self.cells[0].syn)
+        self._nc = h.NetCon(self._netstim, self.cell_data[0].syn)
         self._nc.delay = stim_delay
         self._nc.weight[0] = stim_w
         self.set_pressure_point = []
@@ -387,16 +396,16 @@ class Ring:
 
 
     def _create_cells(self, N, r, cell_data):
-        self.cells = []
+        self.cell_data = []
         for i in range(N):
             #offset_for_grid = (131.308, 227.432)
             theta = i * 2 *h.PI /N 
-            self.cells.append(
+            self.cell_data.append(
                 BallAndStick(i,  h.cos(theta) * r,  h.sin(theta) * r , 0, theta, self.model_parameters, cell_data)
             )
 
     def _connect_cells(self):
-        for source, target in zip(self.cells, self.cells[1:] + [self.cells[0]]):
+        for source, target in zip(self.cell_data, self.cell_data[1:] + [self.cell_data[0]]):
             nc = h.NetCon(source.soma(0.5)._ref_v, target.syn, sec=source.soma)
             nc.weight[0] = self._syn_w
             nc.delay = self._syn_delay
@@ -495,7 +504,7 @@ def compute_action_potential(model_parameters, cell_data):
     vibration_amp = np.max(np.abs(vibration))
 
     # Apply it to the cell's gating
-    ring.cells[0].apply_mechanosensitive_modulation(vibration_amp)
+    ring.cell_data[0].apply_mechanosensitive_modulation(vibration_amp)
     return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp
 
 def classify_action_potential(model_parameters, cell_data):
