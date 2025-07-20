@@ -68,9 +68,9 @@ model_parameters = {
 
 "grid_y" : 256, #height of the grid
 
-"displacement_x" : 1.8e-6, #width of the displacement 
+"displacement_x" : 0.7e-6, #width of the displacement 
 
-"displacement_y" : 1.8e-6, #height of the displacement
+"displacement_y" : 0.7e-6, #height of the displacement
 
 #medium properties
 "sound_speed" : 1540, #sound speed in (meters/second)
