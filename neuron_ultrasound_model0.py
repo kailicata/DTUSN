@@ -35,6 +35,7 @@ h.load_file("stdrun.hoc")
 def load_extracted_cell_coordinates(scale_factor=0.01):
     with open("cell_data_scaled.json", "r") as f:
         cell_data = json.load(f)
+    
     all_x = [coord[0] for coord in cell_data["scaled_soma_coordinates_micrometers"]] + \
     [coord[0] for coord in cell_data["scaled_dendrite_coordinates_micrometers"]]
     all_y = [coord[1] for coord in cell_data["scaled_soma_coordinates_micrometers"]] + \
@@ -50,7 +51,7 @@ def load_extracted_cell_coordinates(scale_factor=0.01):
     for sec in cell_data["scaled_dendrite_coordinates_micrometers"]:
         sec[0] *= scale_factor
         sec[1] *= scale_factor
-
+    
     return cell_data
     
 
@@ -509,12 +510,17 @@ def classify_action_potential(model_parameters, cell_data):
 
 if __name__ == "__main__":
     cell_data = load_extracted_cell_coordinates()
+    print(cell_data)
     ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp  = compute_action_potential(mp, cell_data)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
     
     cell = ring.cells[0]
+    
+
     pressure_frame = combined_sensor_data  # already 2D 
     segment_pressures = get_pressure_at_segment_locations(cell, pressure_frame, kgrid)
+
+    
 
     print("Number of segments with assigned pressures:", len(segment_pressures))
     print("Example pressures:", segment_pressures[:5])
@@ -526,7 +532,7 @@ if __name__ == "__main__":
 
     plotting_on = True
     models_on = True 
-    data_graphs_on = True 
+    data_graphs_on = False 
     print_result = True
     
 

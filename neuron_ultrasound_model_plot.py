@@ -6,13 +6,13 @@ import numpy as np
 # Plot a single neuron in 3D
 def neuron_plot(cell):
     xn, yn, zn = np.array([]), np.array([]), np.array([])
-
+    #these are the confocal microscopy coordinates of the neuron if the ring of 5 neruons 
     # Collect all 3D coordinates from each section of the neuron
-    for sec in cell.all:
-        for i in range(sec.n3d()):
-            xn = np.append(xn, sec.x3d(i))
-            yn = np.append(yn, sec.y3d(i))
-            zn = np.append(zn, sec.z3d(i))
+    for sec in cell.external_all:
+        for p in sec:
+            xn = np.append(xn, p[0])
+            yn = np.append(yn, p[1])
+            zn = np.append(zn, 0)
 
     # 3D scatter plot of neuron structure
     fig = plt.figure()
@@ -29,12 +29,13 @@ def ring_of_neurons(ring):
     xn, yn, zn = np.array([]), np.array([]), np.array([])
 
     # Collect 3D coordinates for all neurons in the ring
+    #these are the confocal microscopy coordinates of the neuron of the single neruon 
     for cell in ring.cells:
-        for sec in cell.all:
-            for i in range(sec.n3d()):
-                xn = np.append(xn, sec.x3d(i))
-                yn = np.append(yn, sec.y3d(i))
-                zn = np.append(zn, sec.z3d(i))
+        for sec in cell.external_all:
+            for p in sec:
+                xn = np.append(xn, p[0])
+                yn = np.append(yn, p[1])
+                zn = np.append(zn, 0)
 
     # 3D scatter plot of all neurons
     fig = plt.figure()
@@ -50,11 +51,11 @@ def neuron_and_ultrasound_plot(ring, source_points, sensor_data, sensor_location
     # Get neuron coordinates
     xn, yn, zn = np.array([]), np.array([]), np.array([])
     for cell in ring.cells:
-        for sec in cell.all:
-            for i in range(sec.n3d()):
-                xn = np.append(xn, sec.x3d(i))
-                yn = np.append(yn, sec.y3d(i))
-                zn = np.append(zn, sec.z3d(i))
+        for sec in cell.external_all:
+            for p in sec:
+                xn = np.append(xn, p[0])
+                yn = np.append(yn, p[1])
+                zn = np.append(zn, 0)
 
     # Get ultrasound source points (nonzero values in 2D grid)
     xs, ys = np.where(source_points)
