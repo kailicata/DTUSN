@@ -33,7 +33,7 @@ import numpy as npx
 
 h.load_file("stdrun.hoc")
 
-def load_extracted_cell_coordinates(scale_factor=0.01):
+def load_extracted_cell_coordinates(scale_factor=1):
     with open("cell_data_scaled.json", "r") as f:
         confocal_microscopy_data = json.load(f)
     
@@ -122,7 +122,7 @@ def ultrasound_simulation():
     element_pos[:,0] = Vector([12**-8,0])
     element_pos[:,1] = Vector([10**-8,0])
 
-    ultrasound_offset = [50*10**-7 , 50*10**-7]  # match segment positions
+    ultrasound_offset = [50*10**-7, 50*10**-7]  # match segment positions
 
     for i in range(num_elemenst):
         element_pos[:,i] = Vector([ultrasound_offset[0] + 10**-8 + i*10**-8 ,ultrasound_offset[1] +0])
@@ -150,14 +150,12 @@ def ultrasound_simulation():
     # Get time array in seconds
     source = kSource()
     x_offset = 20
-    source.p_mask = make_pressure(N, Vector([N.x//4 + x_offset, N.y//4]), 4)
-    logical_p0 = source.p_mask.astype(bool)
 
-    # Get time array in seconds
-    
-    source_points = source.p_mask
+    source.p0 = make_pressure(N, Vector([N.x/4+ x_offset, N.y/4]),4)
+    source_points = source.p0
+
     #source.p0[99:119, 59:199]=1
-    #logical_p0 = source.p0.astype(bool)
+    logical_p0 = source.p0.astype(bool)
     sensor = kSensor()
     sensor.mask = element_pos
     simulation_options = SimulationOptions(
@@ -183,6 +181,29 @@ def ultrasound_simulation():
     #each surface area sensor point has 1207 pressure points 
     sensor_data = output["p"].T
     combined_sensor_data = karray.combine_sensor_data(kgrid, sensor_data)
+
+    #getting the coordinates of the sensor points in meters
+    # shape: (num_points, time_points)
+    all_pressures = combined_sensor_data
+    sensor_coords = np.column_stack(np.where(sensor.mask))  # (y, x) indices
+    x_coords = sensor_coords[:,1] * kgrid.dx  # convert to meters
+    y_coords = sensor_coords[:,0] * kgrid.dy
+    coords_meters = np.column_stack((x_coords, y_coords))  # shape: (num_points, 2)
+
+    print("shape of sensor data is " + str(combined_sensor_data.shape))
+    print("sum of sensor data is " + str(np.sum(combined_sensor_data)))
+    # coords_meters[i] is the (x, y) in meters
+# all_pressures[i] is the pressure time series for that point
+    for i in range(len(coords_meters)):
+        coord = coords_meters[i]
+        pressure_series = all_pressures[0][i]  # Assuming all_pressures[0] is the first sensor's data
+        print("coord: " + str(coord))
+        print("pressure series is " + str(pressure_series))
+
+    coords_in_micrometers = coords_meters * 1e6  # Convert to micrometers
+    # You can store, print, or analyze each (coord, pressure_series) pair
+
+
     #KL**there are 3 sensors but 140 sesnor surface area points 
     #KL**for each sesnor they take into consideation each point of the surface areas 
 
@@ -201,7 +222,7 @@ def ultrasound_simulation():
     print("Grid height (µm):", kgrid.Ny * kgrid.dy * 1e6)
 
 
-    return source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid
+    return source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid, coords_in_micrometers, all_pressures
 
 
 #neuron simulation
@@ -408,7 +429,7 @@ class Ring:
         self._nc = h.NetCon(self._netstim, self.cells[0].syn)
         self._nc.delay = stim_delay
         self._nc.weight[0] = stim_w
-        self.set_pressure_point = []
+        self.pressure_points = []
         self.confocal_microscopy_data = confocal_microscopy_data
 
 
@@ -429,7 +450,8 @@ class Ring:
             source._ncs.append(nc)
     
     def set_pressure_point(self,pressure_intensity):
-        self.set_pressure_point = pressure_intensity
+        self.pressure_points = pressure_intensity
+
 
 
 
@@ -460,7 +482,7 @@ def extract_first_dendrite_points(cell):
     #print(x,y,z)
     return [x, y, z]
 
-def get_pressure_at_segment_locations(cell, pressure_grid, kgrid):
+def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micrometers, all_pressures):
     """
     Maps ultrasound pressure from source.p0 (2D pressure field) to neuron segment positions.
 
@@ -480,6 +502,26 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid):
     Nx = kgrid.Nx
     Ny = kgrid.Ny
 
+
+    coords_in_micrometers
+    all_pressures
+
+    #phase 1 create a pressure grid from the coordinates and all_pressures
+    pressure_grid = np.zeros((Nx, Ny))  # Ensure pressure_grid is a numpy array
+    for i in range(len(coords_in_micrometers)):
+        coord = coords_in_micrometers[i]
+        pressure_series = all_pressures[0][i]  # Assuming all_pressures[0] is the first sensor's data
+        x_idx = int(coord[0])
+        y_idx = int(coord[1])
+        #print("coord: " + str(coord))
+        #print("pressure series is " + str(pressure_series))
+        #print("x_idx:", x_idx, "y_idx:", y_idx, "pressure_series:", pressure_series)
+        if 0 <= x_idx < Nx and 0 <= y_idx < Ny:
+            pressure_grid[y_idx, x_idx] = pressure_series
+        else:
+            print(f"Warning: Pressure coordinate ({coord[0]}, {coord[1]}) is out of bounds for grid size ({Nx}, {Ny}). Skipping.")
+
+    #phase 2 map the pressure grid to the neuron segments
     for sec_coords in cell.external_all:
         for x_um, y_um in sec_coords:
             x_idx = int((x_um) / dx_um)
@@ -492,16 +534,21 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid):
                 pressure = pressure_grid[y_idx, x_idx]
             else:
                 pressure = 0
+            
 
             segment_pressures.append(pressure)
 
-    pry7yg87g7g
-
+    total_pressure = np.sum(segment_pressures)
+    if total_pressure == 0:
+        print("Warning: Total pressure is zero. Check if the pressure grid is correctly populated.")
+        sys.exit(0)
+    
+    
     return segment_pressures
 
 
 def compute_action_potential(model_parameters, confocal_microscopy_data,params):
-    source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid = ultrasound_simulation()
+    source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,coords_in_micrometers, all_pressures = ultrasound_simulation()
     ring = Ring(model_parameters,mp["number_neurons"], confocal_microscopy_data=confocal_microscopy_data)
     # Simulate 5 MHz ultrasound for 30 ms with 0.8 µm amplitude
     time = np.linspace(0, 50, 5000)  # 0 to 50 ms
@@ -517,10 +564,10 @@ def compute_action_potential(model_parameters, confocal_microscopy_data,params):
     for cell in ring.cells:
         cell.apply_mechanosensitive_modulation(vibration_amp)
 
-    return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp
+    return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp, coords_in_micrometers, all_pressures
 
 def classify_action_potential(model_parameters, confocal_microscopy_data, params):
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp   = compute_action_potential(model_parameters, confocal_microscopy_data,params)
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp, coords_in_micrometers, all_pressures  = compute_action_potential(model_parameters, confocal_microscopy_data,params)
     #print("type of ring cells soma v"+str(type(ring.cells[0].soma_v)))
     """
     print(np.sum(ring.cells[0].soma_v > 1000))
@@ -533,14 +580,14 @@ def classify_action_potential(model_parameters, confocal_microscopy_data, params
     return spikes > 0
 
 def run_simulation(params):
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp  = compute_action_potential(mp, confocal_microscopy_data,params)
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp,coords_in_micrometers, all_pressures  = compute_action_potential(mp, confocal_microscopy_data,params)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
     
     cell = ring.cells[0]
     
 
     pressure_frame = combined_sensor_data  # already 2D 
-    segment_pressures = get_pressure_at_segment_locations(cell, pressure_frame, kgrid)
+    segment_pressures = get_pressure_at_segment_locations(cell, pressure_frame, kgrid,coords_in_micrometers, all_pressures)
 
     
 
@@ -553,8 +600,8 @@ def run_simulation(params):
     #PLOTS 
 
     plotting_on = True
-    models_on = False 
-    data_graphs_on = False 
+    models_on = True 
+    data_graphs_on = True 
     print_result = True
     
 
@@ -620,10 +667,19 @@ if __name__ == "__main__":
 
     params = {}
 
-    frequencies = np.linspace(5e5, 5e6, 200)  # Frequencies from 500 kHz to 500 MHz
-    amplitudes = np.linspace(0.1, 1.5, 30)  # Amplitudes from 0.1 µm to 1.5 µm
-    durations = np.linspace(10, 100, 5)  # Durations from
+    do_grid_search = True
 
+    if do_grid_search:
+
+        frequencies = np.linspace(5e5, 5e6, 200)  # Frequencies from 500 kHz to 500 MHz
+        amplitudes = np.linspace(0.1, 1.5, 30)  # Amplitudes from 0.1 µm to 1.5 µm
+        durations = np.linspace(10, 100, 5)  # Durations from
+
+    else:
+        frequencies = [5e6]  # Fixed frequency for testing
+        amplitudes = [0.8]  # Fixed amplitude for testing
+        durations = [30]  # Fixed duration for testing
+    
     for frequency in frequencies:
         for amplitude in amplitudes:
             for duration in durations:
