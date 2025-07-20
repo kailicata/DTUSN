@@ -113,23 +113,15 @@ def ultrasound_simulation():
 
     element_pos = make_cart_circle(ring_radius, num_elemenst, focus_pos) 
 
-   # element_pos = Vector(Vector([0,0]))
 
     #KL** shift one sensor to center of stiumulation grid
-    #KL** used 2 sensors because only array works. positioned at center of nuerons and 0,0 
-    #p = Vector([12**-7,0])
-    #t = element_pos[:,0]
-    element_pos[:,0] = Vector([12**-8,0])
-    element_pos[:,1] = Vector([10**-8,0])
-
+    #KL** used few presure sensors because only array works. positioned at center of nuerons and 0,0 
+    #set the positon of the 3 detetcors are on y-coordinate, but they are spread on x-coordinate.
+    #pressure sensor points are same as pressure dectecrors 
     ultrasound_offset = [50*10**-7, 50*10**-7]  # match segment positions
-
     for i in range(num_elemenst):
         element_pos[:,i] = Vector([ultrasound_offset[0] + 10**-8 + i*10**-8 ,ultrasound_offset[1] +0])
 
-
-
-    #element_pos[:,1] = Vector([50*1**-6,30*1**-6])
 
 
 
@@ -195,10 +187,13 @@ def ultrasound_simulation():
     # coords_meters[i] is the (x, y) in meters
 # all_pressures[i] is the pressure time series for that point
     for i in range(len(coords_meters)):
+
         coord = coords_meters[i]
         pressure_series = all_pressures[0][i]  # Assuming all_pressures[0] is the first sensor's data
-        print("coord: " + str(coord))
-        print("pressure series is " + str(pressure_series))
+        
+        
+    
+    #print("pressure series is " + str(pressure_series))
 
     coords_in_micrometers = coords_meters * 1e6  # Convert to micrometers
     # You can store, print, or analyze each (coord, pressure_series) pair
@@ -220,6 +215,8 @@ def ultrasound_simulation():
 
     print("Grid width (µm):", kgrid.Nx * kgrid.dx * 1e6)
     print("Grid height (µm):", kgrid.Ny * kgrid.dy * 1e6)
+    print(" ---------")
+    print("coord min: " + str(np.min(coord)) + ", max:  " + str(np.max(coord)))
 
 
     return source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid, coords_in_micrometers, all_pressures
@@ -526,7 +523,7 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micro
         for x_um, y_um in sec_coords:
             x_idx = int((x_um) / dx_um)
             y_idx = int((y_um) / dy_um)
-            print("x_um:", x_um, "y_um:", y_um, "dx_um:", dx_um, "dy_um:", dy_um, "x_idx_neuron:", x_idx, "y_idx_neuron:", y_idx, "Nx_ultrasound:", Nx, "Ny_ultrasouns:", Ny)
+            #print("x_um:", x_um, "y_um:", y_um, "dx_um:", dx_um, "dy_um:", dy_um, "x_idx_neuron:", x_idx, "y_idx_neuron:", y_idx, "Nx_ultrasound:", Nx, "Ny_ultrasouns:", Ny)
 
             #print("x_um:", x_um, "dx_um:", dx_um, "x_idx:", x_idx, "Nx:", Nx)
 
@@ -667,7 +664,7 @@ if __name__ == "__main__":
 
     params = {}
 
-    do_grid_search = True
+    do_grid_search = False
 
     if do_grid_search:
 
@@ -676,7 +673,7 @@ if __name__ == "__main__":
         durations = np.linspace(10, 100, 5)  # Durations from
 
     else:
-        frequencies = [5e6]  # Fixed frequency for testing
+        frequencies = [5e5]  # Fixed frequency for testing
         amplitudes = [0.8]  # Fixed amplitude for testing
         durations = [30]  # Fixed duration for testing
     
