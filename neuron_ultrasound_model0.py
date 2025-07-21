@@ -182,8 +182,8 @@ def ultrasound_simulation():
     y_coords = sensor_coords[:,0] * kgrid.dy
     coords_meters = np.column_stack((x_coords, y_coords))  # shape: (num_points, 2)
 
-    print("shape of sensor data is " + str(combined_sensor_data.shape))
-    print("sum of sensor data is " + str(np.sum(combined_sensor_data)))
+    #print("shape of sensor data is " + str(combined_sensor_data.shape))
+    #print("sum of sensor data is " + str(np.sum(combined_sensor_data)))
     # coords_meters[i] is the (x, y) in meters
 # all_pressures[i] is the pressure time series for that point
     for i in range(len(coords_meters)):
@@ -191,6 +191,12 @@ def ultrasound_simulation():
         coord = coords_meters[i]
         pressure_series = all_pressures[0][i]  # Assuming all_pressures[0] is the first sensor's data
         
+    all_pressure_points = sensor_data.flatten().tolist()
+    print("Number of pressure points:", len(all_pressure_points))
+    print("First 10 pressure points:", all_pressure_points[:10])
+
+    print("Max pressure:", max(all_pressure_points))
+    print("Min pressure:", min(all_pressure_points))
         
     
     #print("pressure series is " + str(pressure_series))
@@ -213,13 +219,17 @@ def ultrasound_simulation():
     pm1_mask[-pm1_size:, :]=1
     pm1_mask[:, -pm1_size:]=1
 
-    print("Grid width (µm):", kgrid.Nx * kgrid.dx * 1e6)
-    print("Grid height (µm):", kgrid.Ny * kgrid.dy * 1e6)
+    #print("Grid width (µm):", kgrid.Nx * kgrid.dx * 1e6)
+    #print("Grid height (µm):", kgrid.Ny * kgrid.dy * 1e6)
+
     print(" ---------")
     print("coord min: " + str(np.min(coord)) + ", max:  " + str(np.max(coord)))
 
+    
+    print(" ---------")
 
-    return source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid, coords_in_micrometers, all_pressures
+
+    return source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid, coords_in_micrometers, all_pressures,all_pressure_points
 
 
 #neuron simulation
@@ -375,24 +385,27 @@ class BallAndStick(Cell):
             if hasattr(seg, 'ca'):
                 seg.ca.gca *= scaling_factor_ca  # stretch-sensitive Ca²⁺ channel (PIEZO)
 
-    def apply_local_pressure_modulation(self, segment_pressures):
+    def apply_local_pressure_modulation(self, segment_pressures,all_pressure_points):
         """
         Modulates each segment’s ion channels based on its local pressure.
         """
         idx = 0
         for sec in self.all:
             for seg in sec:
-                if idx < len(segment_pressures):
-                    pressure = segment_pressures[idx]
-                    delta_v = pressure_to_voltage(pressure)
+                #if idx < len(segment_pressures):
+                #pressure = segment_pressures[idx]
+                np_array_seg_pressure = np.array(segment_pressures)
+                pressure = np.sum(np_array_seg_pressure)
+                delta_v = pressure_to_voltage(pressure)
+                print("delta_v for segment " + str(delta_v))    #mV
 
-                    # Example: scale K+ and Ca2+ channels
-                    if hasattr(seg, 'hh'):
-                        seg.hh.gkbar *= 1 + 0.3 * delta_v  # K+ modulation
-                    if hasattr(seg, 'ca'):
-                        seg.ca.gca *= 1 + 0.2 * delta_v  # Ca2+ modulation
+                # Example: scale K+ and Ca2+ channels
+                if hasattr(seg, 'hh'):
+                    seg.hh.gkbar *= 1 + 0.3 * delta_v  # K+ modulation
+                if hasattr(seg, 'ca'):
+                    seg.ca.gca *= 1 + 0.2 * delta_v  # Ca2+ modulation
 
-                    idx += 1
+                idx += 1
 
 
 
@@ -479,7 +492,7 @@ def extract_first_dendrite_points(cell):
     #print(x,y,z)
     return [x, y, z]
 
-def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micrometers, all_pressures):
+def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micrometers, all_pressures,all_pressure_points):
     """
     Maps ultrasound pressure from source.p0 (2D pressure field) to neuron segment positions.
 
@@ -529,6 +542,7 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micro
 
             if 0 <= x_idx < Nx and 0 <= y_idx < Ny:
                 pressure = pressure_grid[y_idx, x_idx]
+                print("Pressure at segment ({}, {}): {}".format(x_idx, y_idx, pressure))
             else:
                 pressure = 0
             
@@ -536,6 +550,7 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micro
             segment_pressures.append(pressure)
 
     total_pressure = np.sum(segment_pressures)
+    print("Total pressure across all segments:", total_pressure)
     if total_pressure == 0:
         print("Warning: Total pressure is zero. Check if the pressure grid is correctly populated.")
         sys.exit(0)
@@ -545,7 +560,7 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micro
 
 
 def compute_action_potential(model_parameters, confocal_microscopy_data,params):
-    source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,coords_in_micrometers, all_pressures = ultrasound_simulation()
+    source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,coords_in_micrometers, all_pressures,all_pressure_points = ultrasound_simulation()
     ring = Ring(model_parameters,mp["number_neurons"], confocal_microscopy_data=confocal_microscopy_data)
     # Simulate 5 MHz ultrasound for 30 ms with 0.8 µm amplitude
     time = np.linspace(0, 50, 5000)  # 0 to 50 ms
@@ -561,10 +576,10 @@ def compute_action_potential(model_parameters, confocal_microscopy_data,params):
     for cell in ring.cells:
         cell.apply_mechanosensitive_modulation(vibration_amp)
 
-    return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp, coords_in_micrometers, all_pressures
+    return ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp, coords_in_micrometers, all_pressures,all_pressure_points
 
 def classify_action_potential(model_parameters, confocal_microscopy_data, params):
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp, coords_in_micrometers, all_pressures  = compute_action_potential(model_parameters, confocal_microscopy_data,params)
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp, coords_in_micrometers, all_pressures,all_pressure_points  = compute_action_potential(model_parameters, confocal_microscopy_data,params)
     #print("type of ring cells soma v"+str(type(ring.cells[0].soma_v)))
     """
     print(np.sum(ring.cells[0].soma_v > 1000))
@@ -577,28 +592,28 @@ def classify_action_potential(model_parameters, confocal_microscopy_data, params
     return spikes > 0
 
 def run_simulation(params):
-    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp,coords_in_micrometers, all_pressures  = compute_action_potential(mp, confocal_microscopy_data,params)
+    ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp,coords_in_micrometers, all_pressures,all_pressure_points  = compute_action_potential(mp, confocal_microscopy_data,params)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
     
     cell = ring.cells[0]
     
 
     pressure_frame = combined_sensor_data  # already 2D 
-    segment_pressures = get_pressure_at_segment_locations(cell, pressure_frame, kgrid,coords_in_micrometers, all_pressures)
+    segment_pressures = get_pressure_at_segment_locations(cell, pressure_frame, kgrid,coords_in_micrometers, all_pressures,all_pressure_points)
 
     
 
     print("Number of segments with assigned pressures:", len(segment_pressures))
     print("Example pressures:", segment_pressures[:5])
 
-    cell.apply_local_pressure_modulation(segment_pressures)
+    cell.apply_local_pressure_modulation(segment_pressures,all_pressure_points)
 
 
     #PLOTS 
 
-    plotting_on = True
-    models_on = True 
-    data_graphs_on = True 
+    plotting_on = False
+    models_on = False 
+    data_graphs_on = False 
     print_result = True
     
 
@@ -668,14 +683,14 @@ if __name__ == "__main__":
 
     if do_grid_search:
 
-        frequencies = np.linspace(5e5, 5e6, 200)  # Frequencies from 500 kHz to 500 MHz
-        amplitudes = np.linspace(0.1, 1.5, 30)  # Amplitudes from 0.1 µm to 1.5 µm
-        durations = np.linspace(10, 100, 5)  # Durations from
+        frequencies = np.linspace(5e5, 5.5e5, 10)  # Frequencies from 500 kHz to 500 MHz
+        amplitudes = np.linspace(0.1, 1.5,5)  # Amplitudes from 0.1 µm to 1.5 µm
+        durations = np.linspace(30, 600, 3)  # Durations from
 
     else:
         frequencies = [5e5]  # Fixed frequency for testing
         amplitudes = [0.8]  # Fixed amplitude for testing
-        durations = [30]  # Fixed duration for testing
+        durations = [100]  # Fixed duration for testing (ms)
     
     for frequency in frequencies:
         for amplitude in amplitudes:
