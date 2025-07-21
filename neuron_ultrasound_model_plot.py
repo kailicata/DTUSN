@@ -178,6 +178,27 @@ def plot_spike_times(ring, mp):
     plt.ylabel("Cell Index")
     plt.show()
 
+def plot_spike_times_with_synaptic_weights(ring):
+    #go through each cell in the ring and plot the spike times
+    plt.figure()
+    #time_spikes = list(cell.spike_times)
+    for i, cell in enumerate(ring.cells):
+        spike_times_list = list(cell.spike_times)
+        np_spike_times_list = np.array(spike_times_list)
+        plt.vlines(np_spike_times_list, i + 0.5, i + 1.5, color="black")
+        print(f"Cell {i} spike times: {np_spike_times_list}")
+    plt.title("Spike Times of Ring Network Cells with Synaptic Weights")
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Cell Index")
+    plt.show()  
+
+   
+
+
+
+
+
+"""
 # Compare spike times under different synaptic weights
 def plot_spike_times_with_synaptic_weights(ring, mp, h, mV, ms, RingClass, cell_data):
     ring = RingClass(mp, N=6, syn_w=syn_w, cell_data=cell_data)
@@ -192,3 +213,4 @@ def plot_spike_times_with_synaptic_weights(ring, mp, h, mV, ms, RingClass, cell_
     plt.xlabel("Time (ms)")
     plt.ylabel("Cell Index")
     plt.show()
+"""
