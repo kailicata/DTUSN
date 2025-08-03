@@ -153,17 +153,12 @@ def plot_sensor_trace(kgrid, combined_sensor_data):
     plt.show()
 
 # Plot voltage of soma over time for first cell
-def soma_voltage_over_time(ring, mp, h, mV, ms):
+def soma_voltage_over_time(ring, mp, h, mV, ms,t):
     shape_window = h.PlotShape(True)
     shape_window.show(0)
 
-    # Record and simulate
-    t = h.Vector().record(h._ref_t)
-    h.finitialize(-65 * mV)
-    h.continuerun(100 * ms)
-
     plt.plot(t, ring.cells[0].soma_v)
-    plt.title(f"{mp['species']} Soma Voltage Over Time")
+    plt.title(f"Soma Voltage Over Time")
     plt.xlabel("Time (ms)")
     plt.ylabel("Voltage (mV)")
     plt.show()
