@@ -20,6 +20,7 @@ from kwave.utils.mapgen import make_cart_circle, make_disc
 from kwave.utils.signals import reorder_binary_sensor_data
 from numpy.ma.core import mvoid
 from pressure_physics_DTUSN import make_pressure
+from simplified_ap_model import simulate_simplified_neuron_voltage
 #loading neuron libraries 
 from neuron import h,gui
 from neuron.units import V, ms, mV 
@@ -106,8 +107,8 @@ def apply_local_pressure_modulation(cell,segment_pressures):
                 #pressure = segment_pressures[idx]
                 np_array_seg_pressure = np.array(segment_pressures)
                 pressure = np.sum(np_array_seg_pressure)
-                delta_v = pressure_to_voltage(pressure*1000)
-                print("delta_v for segment " + str(delta_v))    #mV
+                delta_v = pressure_to_voltage(pressure) 
+                #print("delta_v for segment " + str(delta_v))    #mV
 
 
                 idx += 1
@@ -273,11 +274,11 @@ class Cell:
         self._set_position(x, y, z)
         
         
-        self._spike_detector = h.NetCon(self.soma(0.5)._ref_v, None, sec=self.soma)
-        self.spike_times = h.Vector()
-        self._spike_detector.record(self.spike_times)
-        self._ncs = []
-        self.soma_v = h.Vector().record(self.soma(0.5)._ref_v)
+        #self._spike_detector = h.NetCon(self.soma(0.5)._ref_v, None, sec=self.soma)
+        #self.spike_times = h.Vector()
+        #self._spike_detector.record(self.spike_times)
+        #self._ncs = []
+        #self.soma_v = h.Vector().record(self.soma(0.5)._ref_v)
 
     def __repr__(self):
         return"{}[{}]".format(self.name, self._gid)
@@ -397,8 +398,7 @@ class BallAndStick(Cell):
         if hasattr(seg, 'ca'):
             seg.ca.gca *= 1 + 0.2 * self.delta_v_from_ext_pressure  # Ca2+ modulation
         """
-        self.syn = h.ExpSyn(self.dend(0.5))
-        self.syn.tau = 2 * ms 
+        
 
 
 
@@ -449,12 +449,14 @@ class Ring:
         self.model_parameters = model_parameters
         self._syn_delay = syn_delay
         self._create_cells(N, r, confocal_microscopy_data)
-        self._connect_cells()
+        #self._connect_cells()
         #add stimulus
         self._netstim = h.NetStim()
+        self.syn = h.ExpSyn(self.cells[0].dend(0.5))  # Connect to the first cell's dendrite
+        self.syn.tau = 2 * ms 
         self._netstim.number = 1
         self._netstim.start = stim_t
-        self._nc = h.NetCon(self._netstim, self.cells[0].syn)
+        self._nc = h.NetCon(self._netstim, self.syn)
         self._nc.delay = stim_delay
         self._nc.weight[0] = stim_w
         self.pressure_points = []
@@ -472,6 +474,7 @@ class Ring:
             )
 
     def _connect_cells(self):
+        #this was disabled because it gets created in the main RING initialization
         for source, target in zip(self.cells, self.cells[1:] + [self.cells[0]]):
             nc = h.NetCon(source.soma(0.5)._ref_v, target.syn, sec=source.soma)
             nc.weight[0] = self._syn_w
@@ -577,7 +580,7 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micro
 
             if 0 <= x_idx < Nx and 0 <= y_idx < Ny:
                 pressure = pressure_grid[y_idx, x_idx]
-                print("Pressure at segment ({}, {}): {}".format(x_idx, y_idx, pressure))
+                #print("Pressure at segment ({}, {}): {}".format(x_idx, y_idx, pressure))
             else:
                 pressure = 0
             
@@ -593,6 +596,11 @@ def get_pressure_at_segment_locations(cell, pressure_grid, kgrid,coords_in_micro
     
     return segment_pressures
 
+def simplfied_compute_action_potential(voltage_from_frequency,duration):
+    soma_v, dend_v = simulate_simplified_neuron_voltage(voltage_from_frequency,duration)
+    return soma_v, dend_v
+    
+
 
 
 
@@ -606,6 +614,9 @@ def compute_action_potential(model_parameters, confocal_microscopy_data,params):
     amplitude = params["amplitude"]  # e.g., 0.8 µm
     duration = params["duration"]  # e.g., 30 ms
     vibration = membrane_vibration(frequency,amplitude, time, duration)
+
+
+
 
     # Get the peak displacement
     vibration_amp = np.max(np.abs(vibration))
@@ -629,6 +640,13 @@ def classify_action_potential(model_parameters, confocal_microscopy_data, params
     spikes = np.sum(soma_v_np > 0)
     return spikes > 0
 
+def simplified_classify_action_potential(soma_v, dend_v):
+
+    soma_v_np = np.array(soma_v.to_python())
+    spikes = np.sum(soma_v_np > 0)
+    return spikes > 0
+
+
 def run_simulation(params):
     ring, source_points , sensor_data, sensor_location, combined_sensor_data, logical_p0, pm1_mask, sensor, kgrid,vibration_amp,coords_in_micrometers, all_pressures, all_pressure_points   = compute_action_potential(mp, confocal_microscopy_data,params)
     p_first_dendrite = extract_first_dendrite_points(ring.cells[0])
@@ -639,20 +657,43 @@ def run_simulation(params):
     segment_pressures = get_pressure_at_segment_locations(cell, pressure_frame, kgrid,coords_in_micrometers, all_pressures,all_pressure_points)
     
     print("Number of segments with assigned pressures:", len(segment_pressures))
-    print("Example pressures:", segment_pressures[:5])
+    #print("Example pressures:", segment_pressures[:5])
 
 
     delta_v = apply_local_pressure_modulation(cell,segment_pressures)
+    print("value for delta_v " + str(delta_v)) 
 
-    ring.run_neuron_simulation(duration, v_init=(-65 + 50 )* mV)
+    soma_v, dend_v = simplfied_compute_action_potential(delta_v,duration)
+
+
+    #ring.run_neuron_simulation(duration, v_init=(-65 + 50 )* mV)
     
-
     
-
-
-
     
-    ap_occurred = classify_action_potential(mp, confocal_microscopy_data,params)
+    
+    """
+    soma_v = h.Vector().record(ring.cells[0].soma(0.5)._ref_v)
+    dend_v = h.Vector().record(ring.cells[0].soma(0.5)._ref_v)
+    t = h.Vector().record(h._ref_t)
+    h.finitialize(-65 * mV)
+    h.continuerun(100 * ms)
+
+    fig, ax = plt.subplots()
+    ax.set_xlabel("t (ms)")
+    ax.set_ylabel("V (mV)")
+    ax.plot(t, soma_v, label="Soma Voltage", color="blue", linewidth=2)
+    ax.plot(t, dend_v, label="Dend Voltage", color="red", linewidth=2)
+    ax.legend()
+    plt.show()
+
+
+    print("Soma voltage recorded over time:", soma_v)
+    print("Time vector:", t)
+    print("Delta V from pressure modulation:", delta_v)
+    """
+    
+    #ap_occurred = classify_action_potential(mp, confocal_microscopy_data,params)
+    ap_occurred = simplified_classify_action_potential(soma_v, dend_v)
 
     if ap_occurred == True:
         print("frequnecy: " + str(frequency))
@@ -662,6 +703,7 @@ def run_simulation(params):
         sys.exit(0)
 
     print("action potential occured = " + str(ap_occurred))
+    
 
 
 
@@ -712,10 +754,11 @@ def run_simulation(params):
             #Sensor trace
             plot_sensor_trace(kgrid, combined_sensor_data)
             #Soma voltage over time
-            soma_voltage_over_time(ring,mp,h, mV,ms)
-            
+            #soma_voltage_over_time(ring.cells[0].soma_v, t) #must fix 
+            """
             plot_spike_times(ring,mp)
             plot_spike_times_with_synaptic_weights(ring)
+            """
 
             
 
@@ -737,9 +780,9 @@ if __name__ == "__main__":
         durations = np.linspace(30, 600, 3)  # Durations from
 
     else:
-        frequencies = [5e5]  # Fixed frequency for testing
-        amplitudes = [0.8]  # Fixed amplitude for testing
-        durations = [100]  # Fixed duration for testing (ms)
+        frequencies = [5e6]  # Fixed frequency for testing 5e5
+        amplitudes = [1.0]  # Fixed amplitude for testing 0.8 
+        durations = [100]  # Fixed duration for testing (ms)100 
     
     for frequency in frequencies:
         for amplitude in amplitudes:
